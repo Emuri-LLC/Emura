@@ -31,9 +31,11 @@ per volume break.
 - Domain registrar: Namecheap
 
 ## Current state
-- Working prototype: index.html (single file, all vanilla JS)
+- Working prototype: index.html (kept for reference, not deployed)
 - Spec document: manufacturing-cost-estimator-spec.html
-- Phase 1 complete: app is live at emura.io via Vercel
+- Active app: emura-app/ (Next.js, deployed to emura.io via Vercel)
+- Phase 2 in progress: app running in Next.js as single component
+- Next step: extract calculation engine into lib/calculations.ts
 
 ## Project phases
 - ✅ Phase 0: Environment setup
