@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Manufacturing Cost Estimator — Specification</title>
+<style>
+body{font-family:Georgia,serif;max-width:950px;margin:0 auto;padding:40px 24px;color:#1a1a2e;line-height:1.75;background:#fafafa}
+h1{font-size:28px;border-bottom:3px solid #1a2940;padding-bottom:12px;margin-bottom:4px}
+.subtitle{color:#555;font-style:italic;margin-bottom:36px;font-family:sans-serif;font-size:14px}
+h2{font-size:20px;margin-top:44px;margin-bottom:10px;color:#1a2940;border-left:4px solid #3b82f6;padding-left:12px}
+h3{font-size:16px;margin-top:26px;margin-bottom:8px;color:#2c3e50}
+h4{font-size:14px;margin-top:18px;margin-bottom:6px;color:#34495e;font-style:italic}
+p{margin-bottom:12px}
+ul,ol{margin:8px 0 12px 24px}li{margin-bottom:5px}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;font-family:sans-serif}
+th{background:#1a2940;color:white;padding:9px 13px;text-align:left;font-weight:600}
+td{padding:7px 13px;border-bottom:1px solid #dde;vertical-align:top}
+tr:nth-child(even) td{background:#f5f6fa}
+code{background:#eef0f5;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:13px}
+pre{background:#f4f6fa;padding:16px;border-radius:5px;font-size:12.5px;overflow-x:auto;border:1px solid #dde;font-family:monospace;line-height:1.6}
+.callout{background:#eff6ff;border-left:4px solid #3b82f6;padding:13px 16px;margin:16px 0;border-radius:0 5px 5px 0;font-family:sans-serif;font-size:14px}
+.callout strong{display:block;margin-bottom:6px;color:#1e40af}
+.formula{background:#f0fdf4;padding:11px 16px;font-family:monospace;font-size:13px;margin:10px 0;border-radius:4px;border:1px solid #bbf7d0;color:#14532d}
+.warn{background:#fffbeb;border-left:4px solid #f59e0b;padding:11px 16px;margin:14px 0;border-radius:0 5px 5px 0;font-family:sans-serif;font-size:13.5px}
+nav{position:sticky;top:0;background:#1a2940;padding:9px 18px;border-radius:5px;margin-bottom:36px;display:flex;flex-wrap:wrap;gap:4px}
+nav a{color:#93c5fd;text-decoration:none;font-size:12.5px;font-family:sans-serif;padding:2px 6px;border-radius:3px}
+nav a:hover{color:white;background:rgba(255,255,255,.1)}
+.tip-table th{background:#0f4c81}
+</style>
+</head>
+<body>
+<h1>Manufacturing Cost Estimator</h1>
+<p class="subtitle">Software Specification — Version 0.2 — April 2026 — Draft</p>
+<nav>
+  <a href="#s1">1 Overview</a><a href="#s2">2 Concepts</a><a href="#s3">3 Modules</a>
+  <a href="#s4">4 Data Model</a><a href="#s5">5 Calculations</a><a href="#s6">6 UX</a>
+  <a href="#s7">7 Tooltips</a><a href="#s8">8 Roadmap</a>
+</nav>
+
+<h2 id="s1">1. Overview</h2>
+<p>The Manufacturing Cost Estimator is a <strong>standalone, offline, single-file HTML application</strong> for estimators at contract manufacturing companies. It runs entirely in a browser with no server, no installation, and no internet required.</p>
+<p>The application aggregates four cost categories across multiple finished goods and volume scenarios:</p>
+<ul>
+  <li><strong>BOM / Material Costs</strong> — raw materials and purchased components</li>
+  <li><strong>Direct Labor</strong> — work-cell operations with cycle times, setup times, and equipment costs</li>
+  <li><strong>Indirect Labor</strong> — overhead categories (engineering, quality, purchasing, etc.)</li>
+  <li><strong>Subcontract Costs</strong> — outsourced operations or services</li>
+</ul>
+
+<h3>1.1 Design Goals</h3>
+<ul>
+  <li>Simple, fast, flexible — no frameworks, no build step, no dependencies</li>
+  <li>Handles multi-FG quotes with different volume mixes per finished good</li>
+  <li>Clean separation of order-level vs. line-level setup costs throughout</li>
+  <li>Volume-intelligent material cost lookup with archive and proximity matching</li>
+  <li>All data persists in browser localStorage; import/export via JSON file</li>
+  <li>Every input has a tooltip (ⓘ) explaining purpose and expected value</li>
+</ul>
+
+<h3>1.2 Non-Goals</h3>
+<ul>
+  <li>ERP/MRP integration, CRM, multi-user access, inventory, accounting</li>
+</ul>
+
+<h2 id="s2">2. Key Concepts</h2>
+
+<h3>2.1 Line vs. Order</h3>
+<div class="callout"><strong>Line</strong>An individual production job for a single FG. Each FG occupies its own line. Line setup time is specific to the FG and incurred once per order event per FG.</div>
+<div class="callout" style="background:#fefce8;border-color:#eab308"><strong>Order</strong>A build event where all lines run simultaneously — one line per FG. Order setup time is incurred once per event and its cost is allocated across all units in the order.</div>
+
+<h3>2.2 Volume Breaks</h3>
+<p>Volume break columns represent demand scenarios. Each column has a <strong>Builds Per Year</strong> (applies to all FGs) and an optional <strong>Target Total EAU</strong>. Each FG independently has an EAU per column. The FG EAU sum is validated against the target and can be auto-populated using mix proportions.</p>
+
+<h3>2.3 Work Cell</h3>
+<p>A work cell is a direct labor operation with a fixed operator count and a single cycle time (seconds/unit). The cell produces one unit per cycle. Cycle time governs throughput and must be ≤ takt time to meet demand on a single shift.</p>
+
+<h3>2.4 Takt Time</h3>
+<p>Takt = (Working Hours/Year × 3600) ÷ (Total Annual Units at highest-demand break). Displayed in the Operations tab. Operations with cycle times exceeding takt are flagged.</p>
+
+<h3>2.5 Equipment</h3>
+<p>Equipment is defined on the Equipment tab and assigned to one or more direct labor operations. Each piece of equipment contributes three cost types:</p>
+<ul>
+  <li><strong>CapEx</strong>: time-based allocation via utilization %</li>
+  <li><strong>Hourly Run Cost</strong>: variable cost per run hour (cycle time only)</li>
+  <li><strong>Annual Maintenance</strong>: like CapEx but amortized over 1 year</li>
+</ul>
+<p><strong>Project-Specific</strong> equipment spreads CapEx and maintenance directly over EAU instead of by utilization %.</p>
+
+<h2 id="s3">3. Application Modules</h2>
+
+<h3>3.1 Quote Information</h3>
+<table><tr><th>Field</th><th>Description</th></tr>
+<tr><td>Quote Name</td><td>Free-text identifier; used as default export filename</td></tr>
+<tr><td>Customer</td><td>Customer or prospect name</td></tr>
+<tr><td>Date</td><td>Quote issue date</td></tr>
+<tr><td>Revision</td><td>Revision identifier (e.g. A, 1.2)</td></tr>
+<tr><td>Notes</td><td>Free-text notes. Supports pasted images (Ctrl+V); stored as base64-encoded HTML.</td></tr>
+<tr><td>Shop Rate ($/hr)</td><td>Fully-loaded direct labor rate for all operations</td></tr>
+<tr><td>Indirect Rate ($/hr)</td><td>Rate applied to all indirect labor categories</td></tr>
+<tr><td>Working Hours/Year</td><td>Available machine hours/year per cell; used for takt and CapEx utilization</td></tr>
+<tr><td>CapEx Depreciation Years</td><td>Default equipment depreciation period</td></tr>
+</table>
+
+<h3>3.2 Finished Goods &amp; Volume Breaks</h3>
+<ul>
+  <li>N volume break columns, each with label, builds/year, and optional target total EAU</li>
+  <li>FG rows: name, description, EAU per break column</li>
+  <li>Column sum shown at bottom; colored green/orange/red vs. target</li>
+  <li>When target EAU is set and the break has no FG data, mix auto-fills from the leftmost break's proportions</li>
+  <li>"→ Push mix" button on any filled column applies that column's FG proportions to all other breaks with targets set</li>
+  <li>All rows support drag-to-reorder</li>
+</ul>
+
+<h3>3.3 Bill of Materials</h3>
+<p>Two sections: <strong>Common Materials</strong> (same part/qty for all FGs) and <strong>FG-Specific Materials</strong> (per-FG quantities). Moving between sections is done via a checkbox on each row.</p>
+<table><tr><th>Field</th><th>Description</th></tr>
+<tr><td>Part Number</td><td>Supplier or internal part number</td></tr>
+<tr><td>Description</td><td>Material description</td></tr>
+<tr><td>UOM</td><td>Unit of measure</td></tr>
+<tr><td>Qty/Unit</td><td>Quantity per finished good. Fractions accepted (e.g. "1/4" → 0.25, rounded to 4 decimal places).</td></tr>
+<tr><td>FG-Spec (checkbox)</td><td>Moves item between Common and FG-Specific sections</td></tr>
+<tr><td>Cust.Sup (checkbox)</td><td>Customer-supplied: excluded from Material Costs tab and all cost calculations</td></tr>
+</table>
+
+<h3>3.4 Material Costs</h3>
+<p>Auto-generated table: rows = non-customer-supplied BOM items, columns = volume breaks. Each cell shows the calculated annual purchasing quantity and contains:</p>
+<ul>
+  <li>An editable $/unit cost field</li>
+  <li>An optional <strong>Source</strong> text field (supplier name, quote #, date)</li>
+  <li>A "→" push button to copy the source across all breaks for that material</li>
+</ul>
+
+<h4>Archive &amp; Proximity Matching</h4>
+<ul>
+  <li>All entered costs are stored in an archive keyed by (RM ID, annual purchasing quantity)</li>
+  <li>An archived cost is reused if: <code>archived_qty ∈ [0.9× current_qty, 10× current_qty]</code></li>
+  <li>Flagged cells (archive at different qty) shown in yellow; missing costs shown in pink</li>
+</ul>
+
+<h3>3.5 Equipment</h3>
+<table><tr><th>Field</th><th>Description</th></tr>
+<tr><td>Name</td><td>Equipment description (e.g. "Reflow Oven", "Test Fixture")</td></tr>
+<tr><td>CapEx ($)</td><td>Total capital cost; allocated by utilization × (capex ÷ depreciation years)</td></tr>
+<tr><td>Run Cost ($/hr)</td><td>Variable operating cost per run hour (cycle time only): utilities, consumables, wear</td></tr>
+<tr><td>Annual Maintenance ($)</td><td>Fixed annual cost; allocated like CapEx but always over 1 year</td></tr>
+<tr><td>Project-Specific</td><td>If checked: spread CapEx and maintenance over EAU, not by utilization %</td></tr>
+</table>
+<p>Equipment assigned to an operation with no attributes defined (all zero) is shown in orange with a ⚠ warning on the Operations tab.</p>
+
+<h3>3.6 Direct Labor Operations</h3>
+<table><tr><th>Field</th><th>Description</th></tr>
+<tr><td>Operation Name</td><td>Work cell description (e.g. "SMT Assembly")</td></tr>
+<tr><td>Operators</td><td>Number of operators staffing the cell</td></tr>
+<tr><td>Cycle Time (sec)</td><td>Seconds to produce one unit; must be ≤ takt to meet demand</td></tr>
+<tr><td>Order Setup (min)</td><td>Setup time per order event; shared across all FGs</td></tr>
+<tr><td>Line Setup (min)</td><td>Setup time per FG line per order event; same value for all FGs</td></tr>
+<tr><td>Equipment</td><td>Searchable multi-select dropdown. Type to filter; select creates associations. New names create equipment entries automatically. Shows selected items as chips.</td></tr>
+<tr><td>Notes</td><td>Free-text; supports line breaks</td></tr>
+</table>
+
+<h3>3.7 Subcontracts</h3>
+<table><tr><th>Field</th><th>Description</th></tr>
+<tr><td>Name</td><td>Subcontract operation name</td></tr>
+<tr><td>$/Each</td><td>Variable cost per unit produced</td></tr>
+<tr><td>$/Line</td><td>Fixed cost per FG line per order event</td></tr>
+<tr><td>$/Order</td><td>Fixed cost per full order event (all FGs)</td></tr>
+<tr><td>$/Year</td><td>Fixed annual cost</td></tr>
+<tr><td>Notes</td><td>Free-text; supports line breaks</td></tr>
+</table>
+
+<h3>3.8 Indirect Labor</h3>
+<table><tr><th>Field</th><th>Description</th></tr>
+<tr><td>Category Name</td><td>E.g. "Engineering", "Quality", "Purchasing"</td></tr>
+<tr><td>Annual Hours</td><td>Total sustaining support hours/year; spread over all annual units</td></tr>
+<tr><td>Order Setup (hrs)</td><td>Hours per order event for this category</td></tr>
+<tr><td>Line Setup (hrs)</td><td>Hours per FG line per order event; same for all FGs</td></tr>
+<tr><td>Notes</td><td>Free-text; supports line breaks</td></tr>
+</table>
+
+<h3>3.9 Cost Summary</h3>
+<p>Read-only matrix: FGs as sections, breaks as columns. Breakdown per cell:</p>
+<ul>
+  <li>Material / Direct Labor (Run, Line Setup, Order Setup, Equipment) / Indirect Labor (Annual Run, Line Setup, Order Setup) / Subcontract</li>
+  <li><strong>Total / Unit</strong> and Annual Cost (×EAU)</li>
+  <li><strong>Margin %</strong> — editable per FG per break (stored in state)</li>
+  <li><strong>Sell Price / Unit</strong> — <code>cost ÷ (1 − margin/100)</code> (gross margin basis)</li>
+  <li>Annual Sell (×EAU)</li>
+</ul>
+
+<h2 id="s4">4. Data Model</h2>
+<pre>{
+  quote: { name, customer, date, revision, notes },       // notes = HTML (may contain base64 img)
+  settings: { shopRate, indirectRate, capexYears, workingHoursPerYear },
+
+  breaks: [{ id, label, buildsPerYear, totalEAU }],
+
+  finishedGoods: [{ id, name, description, breaks: [{ eau }] }],
+
+  bom: [{
+    id, partNumber, description, uom,
+    fgSpecific: boolean,           // false = common
+    customerSupplied: boolean,
+    qty: number,                   // if common
+    fgQtys: { [fgId]: number }     // if fg-specific
+  }],
+
+  materialCosts: {
+    [rmId]: [{ annualQty, cost, timestamp }]   // archive
+  },
+  materialSources: {
+    [rmId + "|" + brkIdx]: string             // source per cell
+  },
+
+  equipment: [{
+    id, name,
+    capex: number,
+    hourlyRunCost: number,
+    annualMaintenance: number,
+    projectSpecific: boolean
+  }],
+
+  directOps: [{
+    id, name, operators, cycleTimeSec,
+    orderSetupMin, lineSetupMin,
+    equipmentIds: [equipmentId, ...],
+    notes
+  }],
+
+  indirectOps: [{
+    id, name, annualHours, orderSetupHrs, lineSetupHrs, notes
+  }],
+
+  subcontracts: [{
+    id, name, priceEach, pricePerLine, pricePerOrder, pricePerYear, notes
+  }],
+
+  margins: { [fgId + "|" + brkIdx]: number }    // gross margin %
+}</pre>
+
+<h2 id="s5">5. Calculation Rules</h2>
+
+<h3>5.1 Volume Fundamentals</h3>
+<div class="formula">
+QtyPerBuild(FG_i, Break_j) = EAU_i_j ÷ BuildsPerYear_j
+TotalOrderQty(Break_j) = Σ QtyPerBuild(FG_i, Break_j)
+TotalAnnualUnits(Break_j) = Σ EAU_i_j
+AnnualPurchQty(RM_k, Break_j) = Σ BOMQty(RM_k, FG_i) × EAU_i_j  [customer-supplied: 0]
+</div>
+
+<h3>5.2 Material Cost Per Unit</h3>
+<div class="formula">MaterialCost(FG_i, Break_j) = Σ BOMQty(RM_k, FG_i) × UnitCost(RM_k, Break_j)</div>
+
+<h3>5.3 Equipment Cost Per Unit</h3>
+<p>For each operation <em>Op</em> and each assigned equipment item <em>Eq</em>:</p>
+<div class="formula">
+OccupiedHrs_per_yr = (CycleTimeSec/3600 × TotalAnnualUnits)
+                   + (OrderSetupMin/60 × BuildsPerYear)
+                   + (LineSetupMin/60 × BuildsPerYear × NumFGs)
+
+Utilization = OccupiedHrs_per_yr ÷ WorkingHoursPerYear
+
+<b>If NOT Project-Specific:</b>
+  CapExPerUnit  = (Eq.capex ÷ CapExYears) × Utilization ÷ TotalAnnualUnits
+  MaintPerUnit  = Eq.annualMaintenance × Utilization ÷ TotalAnnualUnits
+
+<b>If Project-Specific:</b>
+  CapExPerUnit  = Eq.capex ÷ TotalAnnualUnits
+  MaintPerUnit  = Eq.annualMaintenance ÷ TotalAnnualUnits
+
+RunCostPerUnit  = Eq.hourlyRunCost × (CycleTimeSec ÷ 3600)   [cycle time only]
+
+EquipCostPerUnit = CapExPerUnit + MaintPerUnit + RunCostPerUnit
+</div>
+
+<h3>5.4 Direct Labor Cost Per Unit</h3>
+<div class="formula">
+RunCost       = (CycleTimeSec ÷ 3600) × ShopRate × Operators
+LineSetupCost = (LineSetupMin ÷ 60) × ShopRate × Operators ÷ QtyPerBuild
+OrderSetupCost= (OrderSetupMin ÷ 60) × ShopRate × Operators ÷ TotalOrderQty
+EquipCost     = Σ EquipCostPerUnit (all assigned equipment)
+
+DirectLabor = RunCost + LineSetupCost + OrderSetupCost + EquipCost
+</div>
+
+<h3>5.5 Indirect Labor Cost Per Unit</h3>
+<div class="formula">
+RunCost        = AnnualHours × IndirectRate ÷ TotalAnnualUnits
+LineSetupCost  = LineSetupHrs × BuildsPerYear × IndirectRate ÷ EAU_i
+OrderSetupCost = OrderSetupHrs × IndirectRate ÷ TotalOrderQty
+  <em>Note: Equivalent to (OrderSetupHrs × BuildsPerYear × IndirectRate) ÷ TotalAnnualUnits
+  — bpy cancels because TotalAnnualUnits = TotalOrderQty × BuildsPerYear</em>
+</div>
+
+<h3>5.6 Subcontract Cost Per Unit</h3>
+<div class="formula">
+SubCost = PriceEach
+        + PricePerLine ÷ QtyPerBuild
+        + PricePerOrder ÷ TotalOrderQty
+        + PricePerYear ÷ TotalAnnualUnits
+</div>
+
+<h3>5.7 Total and Sell Price</h3>
+<div class="formula">
+TotalCost = Material + DirectLabor + IndirectLabor + SubCost
+SellPrice = TotalCost ÷ (1 − Margin/100)   [gross margin basis]
+</div>
+
+<h3>5.8 Takt Time</h3>
+<div class="formula">TaktSec = WorkingHoursPerYear × 3600 ÷ max(TotalAnnualUnits across all breaks)</div>
+
+<h2 id="s6">6. UX Requirements</h2>
+<ul>
+  <li>7 tabs: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary</li>
+  <li>Operations tab contains three sections: Direct Labor → Subcontracts → Indirect Labor</li>
+  <li>All sortable tables support HTML5 drag-to-reorder; drop indicator is a colored line <em>between</em> rows; dragging to the end of a list is supported</li>
+  <li>Add buttons add exactly one row per click; structural changes push an undo state</li>
+  <li>Undo (up to 40 states) available in header; no confirmation dialogs — errors shown inline</li>
+  <li>Auto-save to localStorage on every change (300ms debounce); export/import JSON</li>
+  <li>Every user input has an ⓘ icon with a descriptive tooltip (see §7)</li>
+  <li>Quote Notes is a contenteditable div; pasting an image embeds it as base64</li>
+  <li>Operations notes fields are textareas supporting multi-line input</li>
+  <li>BOM qty accepts fractions (e.g. "1/10" → 0.1, rounded to 4 decimal places)</li>
+  <li>Equipment selector: searchable dropdown with checkboxes; selected items shown as chips; typing a new name and selecting it creates a new equipment entry; chips for items with no defined attributes shown in orange with ⚠</li>
+  <li>Takt notice updates immediately when cycle time is changed (without tab switch)</li>
+  <li>Material costs source field per cell; push button copies source to all breaks for that material</li>
+</ul>
+
+<h2 id="s7">7. Field Tooltip Reference</h2>
+<table class="tip-table">
+<tr><th>Section</th><th>Field</th><th>Tooltip Text</th></tr>
+<tr><td rowspan="9">Quote Info</td><td>Quote Name</td><td>Identifier for this estimate. Used as the default export filename.</td></tr>
+<tr><td>Customer</td><td>Customer or prospect name.</td></tr>
+<tr><td>Date</td><td>Quote issue date.</td></tr>
+<tr><td>Revision</td><td>Revision identifier (e.g. A, 1.2). Increment when significant changes are made.</td></tr>
+<tr><td>Notes</td><td>Free-text notes. Paste an image (Ctrl+V) to embed it.</td></tr>
+<tr><td>Shop Rate</td><td>Fully-loaded direct labor cost per operator-hour. Include wages, benefits, and direct overhead burden.</td></tr>
+<tr><td>Indirect Rate</td><td>Cost per hour for overhead/indirect labor (engineering, quality, purchasing, etc.).</td></tr>
+<tr><td>Working Hours/Year</td><td>Available production hours per year per machine or cell. Used for takt time and CapEx utilization. Typical: 2,000 (1 shift) to 6,000 (3 shifts).</td></tr>
+<tr><td>CapEx Depreciation Years</td><td>Years over which capital equipment is depreciated for time-based CapEx allocation.</td></tr>
+<tr><td rowspan="3">Volume Breaks</td><td>Label</td><td>Descriptive name for this volume scenario (e.g. "High Vol", "1000/yr").</td></tr>
+<tr><td>Builds/Year</td><td>Order events per year. All FGs are built simultaneously each event.</td></tr>
+<tr><td>Target EAU</td><td>Optional target: total EAU across all FGs at this break. Enables mix validation and auto-fill.</td></tr>
+<tr><td rowspan="2">Finished Goods</td><td>FG Name</td><td>Name or part number for this finished good.</td></tr>
+<tr><td>FG EAU</td><td>Estimated Annual Usage (units/year) for this FG at this volume break.</td></tr>
+<tr><td rowspan="6">BOM</td><td>Part Number</td><td>Supplier or internal part number.</td></tr>
+<tr><td>Description</td><td>Material or component description.</td></tr>
+<tr><td>UOM</td><td>Unit of measure (e.g. EA, LB, FT, M, KG).</td></tr>
+<tr><td>Qty/Unit</td><td>Quantity consumed per finished good. Fractions accepted (e.g. 1/4 = 0.25).</td></tr>
+<tr><td>FG-Spec</td><td>Check to move to FG-Specific section — each FG can then have a different quantity.</td></tr>
+<tr><td>Cust.Sup</td><td>Check if customer-supplied. No cost attributed; excluded from Material Costs.</td></tr>
+<tr><td rowspan="2">Material Costs</td><td>$/unit</td><td>Cost per unit at the shown annual purchasing volume. Enter supplier quote or estimated price.</td></tr>
+<tr><td>Source</td><td>Optional. Source of this cost (supplier name, quote #, date). Use → to copy to all breaks.</td></tr>
+<tr><td rowspan="5">Equipment</td><td>Name</td><td>Descriptive name (e.g. "Reflow Oven", "Test Fixture").</td></tr>
+<tr><td>CapEx ($)</td><td>Total capital cost. Allocated by utilization % × (capex ÷ depreciation years).</td></tr>
+<tr><td>Run Cost ($/hr)</td><td>Variable operating cost per run hour (cycle time only). Covers utilities, consumables, wear.</td></tr>
+<tr><td>Annual Maint. ($)</td><td>Fixed annual maintenance cost. Allocated same as CapEx but over 1 year.</td></tr>
+<tr><td>Project-Specific</td><td>If checked: CapEx and maintenance spread over EAU instead of utilization %. Use for job-dedicated tooling or fixtures.</td></tr>
+<tr><td rowspan="7">Direct Labor</td><td>Operation Name</td><td>Name of this work cell or operation (e.g. "SMT Assembly", "Wave Solder").</td></tr>
+<tr><td>Operators</td><td>Number of operators staffing this cell during production.</td></tr>
+<tr><td>Cycle Time (sec)</td><td>Seconds to produce one unit (cell throughput rate). Must be ≤ takt time to meet demand.</td></tr>
+<tr><td>Order Setup (min)</td><td>Minutes to set up this operation once per order event (shared across all FGs).</td></tr>
+<tr><td>Line Setup (min)</td><td>Minutes to set up this operation per FG line per order event.</td></tr>
+<tr><td>Equipment</td><td>Equipment used by this operation. Type to search or add. Equipment with no defined attributes shown in orange.</td></tr>
+<tr><td>Notes</td><td>Free-text notes for this operation.</td></tr>
+<tr><td rowspan="4">Subcontracts</td><td>Name</td><td>Name of this subcontracted operation or service.</td></tr>
+<tr><td>$/Each</td><td>Variable cost per unit produced.</td></tr>
+<tr><td>$/Line</td><td>Fixed cost per FG line per order event. Amortized over units on that line.</td></tr>
+<tr><td>$/Order / $/Year</td><td>Fixed cost per order event or fixed annual cost; amortized accordingly.</td></tr>
+<tr><td rowspan="4">Indirect Labor</td><td>Category Name</td><td>Name of this overhead category (e.g. "Engineering", "Quality", "Purchasing").</td></tr>
+<tr><td>Annual Hours</td><td>Total sustaining support hours/year for this category, spread over all annual units.</td></tr>
+<tr><td>Order Setup (hrs)</td><td>Setup hours per order event for this category.</td></tr>
+<tr><td>Line Setup (hrs)</td><td>Setup hours per FG line per order event for this category.</td></tr>
+<tr><td>Summary</td><td>Margin %</td><td>Gross margin percentage. Sell Price = Total Cost ÷ (1 − Margin/100). Set per FG per volume break.</td></tr>
+</table>
+
+<h2 id="s8">8. Roadmap</h2>
+<table>
+<tr><th>Enhancement</th><th>Notes</th></tr>
+<tr><td>Markup / Margin global default</td><td>Set a default margin that pre-fills all sell price cells</td></tr>
+<tr><td>Scrap / Yield factor</td><td>BOM item yield: effective qty = nominal qty ÷ yield</td></tr>
+<tr><td>FG-specific operations</td><td>Flag direct ops as applicable to a subset of FGs</td></tr>
+<tr><td>Equipment utilization display</td><td>Show % utilization per equipment per break on Equipment tab</td></tr>
+<tr><td>Print / PDF stylesheet</td><td>Clean print layout for Summary and BOM cost sheets</td></tr>
+<tr><td>Cost history chart</td><td>Visual cost-vs-volume curve per FG</td></tr>
+<tr><td>Quote comparison</td><td>Side-by-side view of two saved quotes or revisions</td></tr>
+<tr><td>Tooling amortization</td><td>Separate tooling cost line with custom amortization quantity</td></tr>
+<tr><td>Overhead as % of direct cost</td><td>Alternative: overhead % applied to direct labor rather than $/hr × hrs</td></tr>
+<tr><td>Alternate materials</td><td>Multiple candidate parts per BOM line; estimator selects active one</td></tr>
+</table>
+
+<hr style="margin-top:48px;border:none;border-top:1px solid #ddd">
+<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Manufacturing Cost Estimator Spec v0.2 — April 2026</p>
+</body>
+</html>
