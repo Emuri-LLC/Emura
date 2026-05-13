@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Script from 'next/script'
 
 export const metadata: Metadata = {
   title: 'Emura — Manufacturing Cost Estimator',
@@ -16,7 +15,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         {children}
-        <Script src="/emura.js" strategy="afterInteractive" />
       </body>
     </html>
   )
