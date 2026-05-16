@@ -24,9 +24,8 @@ export function useDragSort<T>(
       onDragStart(e: React.DragEvent) {
         setDragIdx(idx);
         e.dataTransfer.effectAllowed = 'move';
-        requestAnimationFrame(() => {
-          (e.currentTarget as HTMLElement).style.opacity = '0.35';
-        });
+        const el = e.currentTarget as HTMLElement;
+        requestAnimationFrame(() => { el.style.opacity = '0.35'; });
       },
 
       onDragEnd(e: React.DragEvent) {
@@ -45,7 +44,10 @@ export function useDragSort<T>(
         );
       },
 
-      onDragLeave() {
+      onDragLeave(e: React.DragEvent) {
+        // Only clear if actually leaving the row, not just crossing into a child element
+        const related = e.relatedTarget as Node | null;
+        if (related && (e.currentTarget as HTMLElement).contains(related)) return;
         setDropInfo(prev => (prev?.idx === idx ? null : prev));
       },
 

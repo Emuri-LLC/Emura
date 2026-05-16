@@ -46,8 +46,8 @@ tr:hover td{background:#f9fafc}
 /* Drag */
 .drag-h{color:#bbb;cursor:grab;padding:0 3px;user-select:none;font-size:14px}
 tr[draggable].dragging{opacity:.35}
-tr[draggable].drag-before > td{border-top:2px solid #4d9fff !important}
-tr[draggable].drag-after > td{border-bottom:2px solid #4d9fff !important}
+tr[draggable].drag-before > td{box-shadow:0 -2px 0 0 #4d9fff}
+tr[draggable].drag-after > td{box-shadow:0 2px 0 0 #4d9fff}
 /* BOM */
 .cs-row td{color:#bbb}.cs-row input,.cs-row select{color:#bbb;background:#fafafa}
 /* Mat costs */
@@ -64,7 +64,7 @@ tr[draggable].drag-after > td{border-bottom:2px solid #4d9fff !important}
 .eq-chip-warn{background:#fff7ed;color:#c2410c}
 .eq-chip button{background:none;border:none;cursor:pointer;color:inherit;font-size:12px;padding:0;line-height:1}
 .eq-inp{font-size:11.5px;padding:3px 6px;width:100%;border:1px solid #cdd;border-radius:3px}
-.eq-menu{position:fixed;background:#fff;border:1px solid #cdd;border-radius:3px;max-height:160px;overflow-y:auto;box-shadow:0 3px 10px rgba(0,0,0,.18);z-index:9999;display:none;min-width:180px}
+.eq-menu{position:fixed;background:#fff;border:1px solid #cdd;border-radius:3px;max-height:160px;overflow-y:auto;box-shadow:0 3px 10px rgba(0,0,0,.18);z-index:9999;min-width:180px}
 .eq-item label{display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-size:12px;white-space:nowrap}
 .eq-item label:hover{background:#f0f4ff}
 .eq-item input[type=checkbox]{width:auto;cursor:pointer}
