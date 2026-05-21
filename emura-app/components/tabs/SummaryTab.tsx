@@ -69,7 +69,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
           {brks.map((_, j) => {
             const c = calcCosts(state, fi, j);
             if (!c || c.eau === 0) return <td key={j} style={{ textAlign: 'right', color: '#aaa' }}>N/A</td>;
-            const v = (c as Record<string, number>)[key];
+            const v = (c as unknown as Record<string, number>)[key];
             if (c.matIncomplete && key === 'mat') {
               return <td key={j} style={{ textAlign: 'right', fontFamily: 'monospace' }} className="inc">{fmt4(v)} ⚠</td>;
             }
