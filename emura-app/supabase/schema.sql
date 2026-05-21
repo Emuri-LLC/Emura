@@ -198,7 +198,9 @@ create policy "quotes_delete" on quotes for delete
 -- Reads company_name from user metadata set during signUp().
 -- Only creates an org if the user isn't already joining via an invite (handled separately).
 create or replace function handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 declare
   v_company text;
   v_org     uuid;
@@ -209,13 +211,13 @@ begin
     new.raw_user_meta_data->>'company_name',
     split_part(new.email, '@', 1)
   );
-  insert into organizations (name, created_by)
+  insert into public.organizations (name, created_by)
     values (v_company, new.id) returning id into v_org;
-  insert into sites (org_id, name)
+  insert into public.sites (org_id, name)
     values (v_org, 'Main Site') returning id into v_site;
-  insert into departments (site_id, name)
+  insert into public.departments (site_id, name)
     values (v_site, 'General') returning id into v_dept;
-  insert into org_members (org_id, user_id, role, department_id)
+  insert into public.org_members (org_id, user_id, role, department_id)
     values (v_org, new.id, 'admin', v_dept);
   return new;
 end; $$;
