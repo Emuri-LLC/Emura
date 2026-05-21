@@ -8,7 +8,7 @@
 create table organizations (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
-  created_by  uuid references auth.users not null,
+  created_by  uuid references auth.users on delete set null,
   created_at  timestamptz default now()
 );
 
@@ -43,7 +43,7 @@ create table org_invites (
   role          text not null check (role in ('admin','estimator','viewer')),
   department_id uuid references departments,
   token         text unique not null default encode(gen_random_bytes(24), 'hex'),
-  created_by    uuid references auth.users not null,
+  created_by    uuid references auth.users on delete set null,
   expires_at    timestamptz not null default (now() + interval '7 days'),
   accepted_at   timestamptz,
   created_at    timestamptz default now()
@@ -52,7 +52,7 @@ create table org_invites (
 create table quotes (
   id            uuid primary key default gen_random_uuid(),
   department_id uuid references departments on delete cascade not null,
-  created_by    uuid references auth.users not null,
+  created_by    uuid references auth.users on delete set null,
   name          text not null default 'New Quote',
   customer      text not null default '',
   state         jsonb not null,
