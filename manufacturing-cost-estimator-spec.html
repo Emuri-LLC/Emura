@@ -30,7 +30,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </head>
 <body>
 <h1>Emura — Manufacturing Cost Estimator</h1>
-<p class="subtitle">Product Specification — Version 0.3 — May 2026</p>
+<p class="subtitle">Product Specification — Version 0.4 — May 2026</p>
 <nav>
   <a href="#s1">1 Overview</a><a href="#s2">2 Concepts</a><a href="#s3">3 Modules</a>
   <a href="#s4">4 Data Model</a><a href="#s5">5 Calculations</a><a href="#s6">6 UX</a>
@@ -38,7 +38,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </nav>
 
 <h2 id="s1">1. Overview</h2>
-<p><strong>Emura</strong> is a web-based manufacturing cost estimator built for estimators at contract manufacturing companies. It runs at <a href="https://emura.io">emura.io</a> and performs all calculations instantly in the browser — no waiting for server responses, no lag between input and result.</p>
+<p><strong>Emura</strong> is a web-based manufacturing cost estimator built for estimators at contract manufacturing companies. It runs at <a href="https://emura.io">emura.io</a> and requires a free account to access. All calculations run instantly in the browser — no waiting for server responses, no lag between input and result.</p>
 <p>The application aggregates four cost categories across multiple finished goods and volume scenarios:</p>
 <ul>
   <li><strong>BOM / Material Costs</strong> — raw materials and purchased components, with volume-sensitive cost archive</li>
@@ -59,7 +59,11 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   <li>No pop-up warnings — errors shown inline; all structural changes are undoable</li>
 </ul>
 
-<h3>1.2 Non-Goals (current version)</h3>
+<h3>1.2 Access</h3>
+<p>A free account is required. Create one at <a href="https://emura.io/login">emura.io/login</a> using an email address and password. Once logged in, your session persists across browser sessions — you will not need to log in again on the same device unless you explicitly log out. A <strong>Logout</strong> button is available in the application header.</p>
+<p>Quotes are currently stored in your browser's local storage, meaning they are tied to the device and browser you used to create them. Cloud sync (access from any device) is coming in a future release. Use the <strong>Export</strong> button in the header to save a JSON backup of any quote, and <strong>Import</strong> to restore it.</p>
+
+<h3>1.3 Non-Goals (current version)</h3>
 <ul>
   <li>ERP/MRP integration, CRM, inventory management, accounting</li>
   <li>Multi-user collaboration, organizational accounts, and cloud sync are planned for future releases (see §8)</li>
@@ -128,7 +132,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td>UOM</td><td>Unit of measure (e.g. EA, LB, FT, M)</td></tr>
 <tr><td>Qty/Unit</td><td>Quantity consumed per finished good. Fractions accepted (e.g. "1/4" → 0.25). Committed on blur, not on each keystroke.</td></tr>
 <tr><td>FG-Spec (checkbox)</td><td>When checked, moves item to the FG-Specific section — each FG then has its own quantity column</td></tr>
-<tr><td>Cust.Sup (checkbox)</td><td>Customer-supplied: excluded from Material Costs and all cost calculations. Row grayed out as a visual reminder.</td></tr>
+<tr><td>Cust.Sup (checkbox)</td><td>Customer-supplied: excluded from Material Costs and all cost calculations. Row grayed out as a visual reminder.  Cost data is stored while a part is flagged customer supplied, meaning it can be temporarily "turned off" then turned back on.</td></tr>
 </table>
 <p>All BOM rows support drag-to-reorder within their section.</p>
 
@@ -418,13 +422,13 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 
 <h2 id="s8">8. Roadmap</h2>
 
-<h3>8.1 Platform Features (in development)</h3>
+<h3>8.1 Platform Features</h3>
 <table>
-<tr><th>Feature</th><th>Description</th></tr>
-<tr><td>User authentication</td><td>Login / signup; quotes protected behind user accounts</td></tr>
-<tr><td>Cloud save / sync</td><td>Quotes stored in the cloud; accessible from any device; local storage remains as offline cache</td></tr>
-<tr><td>Organizational accounts</td><td>Multiple users under one company account; share quotes within the org</td></tr>
-<tr><td>Role-based access</td><td>Admin, estimator, read-only roles per organization</td></tr>
+<tr><th>Feature</th><th>Status</th><th>Description</th></tr>
+<tr><td>User authentication</td><td>✅ Live</td><td>Login / signup at emura.io/login; app gated behind user accounts</td></tr>
+<tr><td>Cloud save / sync</td><td>In development</td><td>Quotes stored in the cloud per user; accessible from any device; local storage remains as offline fallback</td></tr>
+<tr><td>Organizational accounts</td><td>Planned</td><td>Multiple users under one company account; share quotes within the org</td></tr>
+<tr><td>Role-based access</td><td>Planned</td><td>Admin, estimator, read-only roles per organization</td></tr>
 </table>
 
 <h3>8.2 Estimating Enhancements</h3>
@@ -450,6 +454,6 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 </table>
 
 <hr style="margin-top:48px;border:none;border-top:1px solid #ddd">
-<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.3 — May 2026 — Emuri, LLC</p>
+<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.4 — May 2026 — Emuri, LLC</p>
 </body>
 </html>

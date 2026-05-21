@@ -11,7 +11,7 @@ per volume break.
 - Company: Emuri, LLC
 - Product: Emura
 - Owner: Ethan Meyers (ebmeyers on GitHub)
-- Stage: Phase 2 complete — full React app live at emura.io
+- Stage: Phase 3 complete — auth live at emura.io
 
 ## URLs
 - Production: https://emura.io
@@ -25,28 +25,39 @@ per volume break.
 - Local URL: http://localhost:3000
 
 ## Tech stack
-- Frontend: Next.js (React, App Router, TypeScript)
+- Frontend: Next.js 16 (React, App Router, TypeScript)
 - Hosting: Vercel (auto-deploys on git push to main)
-- Database + Auth: Supabase (Phase 3 — not yet implemented)
+- Auth: Supabase (`@supabase/supabase-js` + `@supabase/ssr`) — live
+- Database / Cloud save: Supabase Postgres (Phase 4 — not yet implemented)
 - Payments: Stripe (Phase 6 — not yet implemented)
 - Domain registrar: Namecheap (emura.io connected to Vercel)
+
+## Vercel configuration (required settings)
+- **Root Directory**: `emura-app` (not `./` — the Next.js app is in the subdirectory)
+- **Framework Preset**: Next.js
+- **Build Command**: `npm run build`
+- **Output Directory**: `.next`
+- **Environment Variables**: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - These are baked into the JS bundle at build time — changing them on Vercel requires a redeploy
+  - Never commit `.env.local` — it's covered by `.env*` in `.gitignore`
 
 ## Project phases
 - ✅ Phase 0: Environment setup (Node, Git, GitHub, Vercel)
 - ✅ Phase 1: Get something live on Vercel
 - ✅ Phase 2: Full React migration — all 7 tabs, calculations, drag-and-drop
-- 🔜 Phase 3: Add Supabase authentication (login/signup, protect app behind auth)
-- Phase 4: Cloud save/load (replace localStorage with Supabase JSONB)
+- ✅ Phase 3: Supabase authentication — login/signup live, app gated behind auth
+- 🔜 Phase 4: Cloud save/load (replace localStorage with Supabase JSONB per user)
 - Phase 5: Organizations and sharing (org model, invite flow, roles)
 - Phase 6: Launch prep (Stripe subscriptions, custom email, error tracking)
 
-## Current state (Phase 2 complete)
+## Current state (Phase 3 complete)
 - `index.html`: original prototype, kept for reference only, NOT deployed
 - `manufacturing-cost-estimator-spec.html`: product specification document
 - `emura-app/`: the live Next.js application deployed to emura.io
 - `emura-app/public/emura.js`: intentional stub (3-line comment), all logic is in React
 - All 7 tabs fully functional in React: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary
-- State persists to localStorage (`STORE_KEY = 'mce_v4'`)
+- Auth required: unauthenticated users redirected to `/login`; logout button in header
+- State still persists to localStorage (`STORE_KEY = 'mce_v4'`) — cloud save is Phase 4
 - Undo/redo via history stack in page.tsx (40-state depth)
 - Export/Import as JSON
 - All calculations run client-side synchronously
@@ -54,9 +65,14 @@ per volume break.
 ## Key file locations
 
 ### App entry
-- `emura-app/app/page.tsx` — root component; owns AppState, history, resetKey
+- `emura-app/app/page.tsx` — root component; owns AppState, history, resetKey; has Logout button
 - `emura-app/app/layout.tsx` — sets metadata and loads globals.css (no scripts)
 - `emura-app/app/globals.css` — all CSS (migrated from index.html)
+- `emura-app/app/login/page.tsx` — login/signup page; handles both modes with toggle link
+
+### Auth
+- `emura-app/proxy.ts` — Next.js 16 auth gate (replaces middleware.ts); redirects unauthenticated users to /login
+- `emura-app/lib/supabase.ts` — browser Supabase client factory (`createClient()`)
 
 ### Logic
 - `emura-app/lib/calculations.ts` — all cost math as pure functions; defines all TypeScript interfaces
@@ -103,6 +119,27 @@ settings     { shopRate, indirectRate, capexYears, workingHoursPerYear }
 - **+Add buttons add exactly one row per click.**
 
 ## Critical implementation gotchas
+
+### Next.js 16: middleware.ts → proxy.ts
+Next.js 16 renamed the file convention from `middleware.ts` to `proxy.ts` and the exported
+function from `middleware` to `proxy`. Using `middleware.ts` still works but logs a deprecation
+warning. Always use `proxy.ts` for new projects on Next.js 16+.
+
+### Production build runs strict TypeScript; local dev does not
+`next dev` skips type checking. `next build` (Vercel) runs it strictly. Cross-type casts
+that dev tolerates will fail in production. Always cast through `unknown` first:
+`(value as unknown as TargetType)` — not `(value as TargetType)` when types don't overlap.
+
+### NEXT_PUBLIC_* variables are baked in at build time
+Changing a `NEXT_PUBLIC_*` env var on Vercel does NOT take effect until the next deployment.
+These are embedded into the JavaScript bundle during `next build`, not read at runtime.
+Always trigger a redeploy after changing them.
+
+### Equipment dropdown: never use display:none in CSS for React-controlled visibility
+The `.eq-menu` CSS originally had `display:none` from the vanilla JS prototype (JS toggled it).
+React controls visibility via conditional rendering — if CSS also has `display:none`, the
+element is permanently hidden even when React renders it. Let React own show/hide; CSS should
+only style, not gate.
 
 ### Never define inner components inside a parent component
 Inner component definitions (e.g., `function Row() { ... }` inside `BOMTab`) cause React
