@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { loadState, saveState, defaultState } from '@/lib/state';
+import { loadState, saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState } from '@/lib/calculations';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -70,7 +70,7 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = ev => {
       try {
-        const imported = JSON.parse(ev.target?.result as string) as AppState;
+        const imported = migrateState(JSON.parse(ev.target?.result as string));
         setHistory(prev => [...prev.slice(-39), appState!]);
         setAppState(imported);
         saveState(imported);
@@ -101,6 +101,7 @@ export default function Home() {
 async function handleLogout() {
   const supabase = createClient();
   await supabase.auth.signOut();
+  localStorage.removeItem(STORE_KEY);
   window.location.href = '/login';
 }
   return (

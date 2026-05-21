@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import type { AppState } from '@/lib/calculations';
 import InfoIcon from '@/components/InfoIcon';
 
@@ -16,7 +17,7 @@ export default function QuoteInfoTab({ state, onUpdate }: Props) {
   // We don't update it on every render — that would reset the cursor.
   useEffect(() => {
     if (notesRef.current) {
-      notesRef.current.innerHTML = state.quote.notes ?? '';
+      notesRef.current.innerHTML = DOMPurify.sanitize(state.quote.notes ?? '', { ADD_TAGS: ['img'], ADD_ATTR: ['src', 'style'] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

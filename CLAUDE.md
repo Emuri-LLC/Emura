@@ -118,6 +118,29 @@ settings     { shopRate, indirectRate, capexYears, workingHoursPerYear }
 - **No pop-ups or warnings ever** (except deleting an entire quote). Instead allow undo.
 - **+Add buttons add exactly one row per click.**
 
+## Security measures
+
+### Auth & session
+- Logout clears `localStorage` (`STORE_KEY`) before redirecting — prevents quote data leaking on shared devices
+- `proxy.ts` gates all routes except `_next/static`, `_next/image`, and `favicon.ico`
+
+### Input sanitization
+- `DOMPurify.sanitize()` applied to `state.quote.notes` on mount in `QuoteInfoTab.tsx` — guards against XSS in imported quotes
+- Imported JSON is piped through `migrateState()` before loading — normalizes missing/malformed fields instead of casting blind
+- Only the Supabase anon key is used client-side; secret key never touches the frontend
+
+### HTTP security headers (next.config.ts)
+- `Content-Security-Policy`: restricts scripts/styles to self + inline (required for Next.js/JSX inline styles); images allow `data:` for pasted notes; connect allows `*.supabase.com`
+- `X-Frame-Options: DENY` — blocks clickjacking
+- `X-Content-Type-Options: nosniff` — prevents MIME sniffing
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy` — disables camera, microphone, geolocation
+
+### What's intentionally deferred
+- localStorage is plaintext — by design until Phase 4 (Supabase cloud save)
+- No server-side CSRF tokens — no server mutations yet; Supabase SDK handles this in Phase 4
+- No client-side login rate limiting — Supabase enforces server-side; add UI feedback in Phase 6
+
 ## Critical implementation gotchas
 
 ### Next.js 16: middleware.ts → proxy.ts
