@@ -5,16 +5,16 @@ import { createClient } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 function LoginContent() {
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [company, setCompany]   = useState('');
-  const [mode, setMode]         = useState<'signin' | 'signup'>('signin');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [company, setCompany]     = useState('');
+  const [mode, setMode]           = useState<'signin' | 'signup'>('signin');
+  const [error, setError]         = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const router       = useRouter();
   const searchParams = useSearchParams();
 
-  // Pre-fill email if an invite token is present in the URL
   useEffect(() => {
     const inviteEmail = searchParams.get('email');
     if (inviteEmail) { setEmail(inviteEmail); setMode('signup'); }
@@ -30,23 +30,21 @@ function LoginContent() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       setLoading(false);
       if (error) { setError(error.message); return; }
+      const token = searchParams.get('token');
+      router.push(token ? `/join?token=${token}` : '/');
     } else {
       if (!company.trim()) { setError('Company name is required.'); setLoading(false); return; }
-      // company_name in metadata is read by the handle_new_user trigger to auto-create the org
       const { error } = await supabase.auth.signUp({
         email, password,
         options: {
           data: { company_name: company.trim() },
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: window.location.origin,
         },
       });
       setLoading(false);
       if (error) { setError(error.message); return; }
+      setConfirmed(true);
     }
-
-    // If this login came from an invite link, redirect back to the join page
-    const token = searchParams.get('token');
-    router.push(token ? `/join?token=${token}` : '/');
   }
 
   const inputStyle: React.CSSProperties = {
@@ -70,52 +68,73 @@ function LoginContent() {
           Manufacturing Cost Estimator
         </p>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
-              Email
-            </label>
-            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
+        {confirmed ? (
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#166534', marginBottom: 8 }}>
+              Check your email
+            </p>
+            <p style={{ fontSize: 12.5, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
+              We sent a confirmation link to <strong>{email}</strong>.
+              Click it to activate your account, then sign in below.
+            </p>
+            <button
+              onClick={() => { setConfirmed(false); setMode('signin'); }}
+              style={{ padding: '8px 20px', background: '#1a2940', color: '#fff',
+                border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Go to Sign In
+            </button>
           </div>
+        ) : (
+          <>
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
+                  Email
+                </label>
+                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
+              </div>
 
-          {mode === 'signup' && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
-                Company Name
-              </label>
-              <input type="text" required value={company} onChange={e => setCompany(e.target.value)} style={inputStyle} />
-            </div>
-          )}
+              {mode === 'signup' && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
+                    Company Name
+                  </label>
+                  <input type="text" required value={company} onChange={e => setCompany(e.target.value)} style={inputStyle} />
+                </div>
+              )}
 
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
-              Password
-            </label>
-            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} />
-          </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
+                  Password
+                </label>
+                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} />
+              </div>
 
-          {error && (
-            <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 3,
-              padding: '7px 10px', fontSize: 12, color: '#991b1b', marginBottom: 14 }}>
-              {error}
-            </div>
-          )}
+              {error && (
+                <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 3,
+                  padding: '7px 10px', fontSize: 12, color: '#991b1b', marginBottom: 14 }}>
+                  {error}
+                </div>
+              )}
 
-          <button type="submit" disabled={loading} style={{
-            width: '100%', padding: '9px', background: '#1a2940', color: '#fff',
-            border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}>
-            {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
-          </button>
-        </form>
+              <button type="submit" disabled={loading} style={{
+                width: '100%', padding: '9px', background: '#1a2940', color: '#fff',
+                border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}>
+                {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+              </button>
+            </form>
 
-        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#666' }}>
-          {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-          <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}
-            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-            {mode === 'signin' ? 'Create one' : 'Sign in'}
-          </button>
-        </p>
+            <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#666' }}>
+              {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+              <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}
+                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                {mode === 'signin' ? 'Create one' : 'Sign in'}
+              </button>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
