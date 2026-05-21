@@ -200,6 +200,7 @@ create policy "quotes_delete" on quotes for delete
 create or replace function handle_new_user()
 returns trigger language plpgsql security definer
 set search_path = public
+set row_security = off
 as $$
 declare
   v_company text;
