@@ -39,6 +39,7 @@ export default function Home() {
   const [resetKey, setResetKey]       = useState(0);
   const [adminOpen, setAdminOpen]     = useState(false);
   const [saveStatus, setSaveStatus]   = useState('Saved');
+  const [loaded, setLoaded]           = useState(false);
 
   // Debounce timer for cloud saves
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,6 +60,8 @@ export default function Home() {
         const qs = await listQuotes(supabase);
         setQuotes(qs);
       }
+
+      setLoaded(true);
     }
     init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,8 +178,8 @@ export default function Home() {
 
   // ── Render ───────────────────────────────────────────────────
 
-  // Still bootstrapping
-  if (orgCtx === null && userId === '') return null;
+  // Still bootstrapping — show nothing to avoid any flash
+  if (!loaded) return null;
 
   // No org row found — trigger didn't fire or user confirmed email before trigger was created
   if (orgCtx === null) {
