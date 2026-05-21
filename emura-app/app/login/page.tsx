@@ -35,7 +35,10 @@ function LoginContent() {
       // company_name in metadata is read by the handle_new_user trigger to auto-create the org
       const { error } = await supabase.auth.signUp({
         email, password,
-        options: { data: { company_name: company.trim() } },
+        options: {
+          data: { company_name: company.trim() },
+          emailRedirectTo: `${window.location.origin}/`,
+        },
       });
       setLoading(false);
       if (error) { setError(error.message); return; }

@@ -178,11 +178,21 @@ export default function Home() {
   // Still bootstrapping
   if (orgCtx === null && userId === '') return null;
 
-  // No org yet — new user whose create_org RPC may still be running; show loading
+  // No org row found — trigger didn't fire or user confirmed email before trigger was created
   if (orgCtx === null) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef0f4' }}>
-        <p style={{ color: '#555', fontSize: 14 }}>Setting up your account…</p>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#eef0f4', gap: 12 }}>
+        <p style={{ color: '#555', fontSize: 14 }}>No organization found for your account.</p>
+        <p style={{ color: '#888', fontSize: 12, maxWidth: 320, textAlign: 'center' }}>
+          This can happen if your account was created before the setup was complete.
+          Please sign out and create a new account, or contact your administrator.
+        </p>
+        <button
+          onClick={handleLogout}
+          style={{ padding: '8px 20px', background: '#1a2940', color: '#fff', border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
+        >
+          Sign Out
+        </button>
       </div>
     );
   }
