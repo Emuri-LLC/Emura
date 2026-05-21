@@ -32,15 +32,13 @@ function LoginContent() {
       if (error) { setError(error.message); return; }
     } else {
       if (!company.trim()) { setError('Company name is required.'); setLoading(false); return; }
-      const { data: signUpData, error } = await supabase.auth.signUp({ email, password });
-      if (error) { setLoading(false); setError(error.message); return; }
-      // Pass uid explicitly — auth.uid() is null when email confirmation is enabled
-      const { error: rpcError } = await supabase.rpc('create_org_for_new_user', {
-        org_name: company.trim(),
-        uid: signUpData.user?.id,
+      // company_name in metadata is read by the handle_new_user trigger to auto-create the org
+      const { error } = await supabase.auth.signUp({
+        email, password,
+        options: { data: { company_name: company.trim() } },
       });
       setLoading(false);
-      if (rpcError) { setError('Account created but org setup failed: ' + rpcError.message); return; }
+      if (error) { setError(error.message); return; }
     }
 
     // If this login came from an invite link, redirect back to the join page

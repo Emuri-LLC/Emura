@@ -194,28 +194,35 @@ create policy "quotes_delete" on quotes for delete
 
 -- ── RPC Functions ─────────────────────────────────────────────
 
--- Called once after signup: creates org + Main Site + General dept + admin membership.
--- Accepts explicit uid fallback for when email confirmation is on and no session exists yet.
-create or replace function create_org_for_new_user(org_name text, uid uuid default null)
-returns uuid language plpgsql security definer as $$
+-- Trigger: fires on every new auth.users insert.
+-- Reads company_name from user metadata set during signUp().
+-- Only creates an org if the user isn't already joining via an invite (handled separately).
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer as $$
 declare
-  v_uid  uuid;
-  v_org  uuid;
-  v_site uuid;
-  v_dept uuid;
+  v_company text;
+  v_org     uuid;
+  v_site    uuid;
+  v_dept    uuid;
 begin
-  v_uid := coalesce(auth.uid(), uid);
-  if v_uid is null then raise exception 'User ID could not be determined'; end if;
+  v_company := coalesce(
+    new.raw_user_meta_data->>'company_name',
+    split_part(new.email, '@', 1)
+  );
   insert into organizations (name, created_by)
-    values (org_name, v_uid) returning id into v_org;
+    values (v_company, new.id) returning id into v_org;
   insert into sites (org_id, name)
     values (v_org, 'Main Site') returning id into v_site;
   insert into departments (site_id, name)
     values (v_site, 'General') returning id into v_dept;
   insert into org_members (org_id, user_id, role, department_id)
-    values (v_org, v_uid, 'admin', v_dept);
-  return v_org;
+    values (v_org, new.id, 'admin', v_dept);
+  return new;
 end; $$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
 
 -- Accept an invite token: inserts org_members row and marks invite accepted
 create or replace function accept_org_invite(invite_token text)
