@@ -1,0 +1,95 @@
+'use client';
+
+import { useState } from 'react';
+import { createClient } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+
+export default function LoginPage() {
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [mode, setMode]         = useState<'signin' | 'signup'>('signin');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const supabase = createClient();
+
+    const { error } =
+      mode === 'signin'
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
+
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    router.push('/');
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#eef0f4',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 6, boxShadow: '0 2px 12px rgba(0,0,0,.12)',
+        padding: '36px 40px', width: 340,
+      }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1a2940', marginBottom: 6 }}>
+          ⚙ Emura
+        </h1>
+        <p style={{ fontSize: 12.5, color: '#666', marginBottom: 24 }}>
+          Manufacturing Cost Estimator
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
+              Email
+            </label>
+            <input
+              type="email" required value={email}
+              onChange={e => setEmail(e.target.value)}
+              style={{ width: '100%', padding: '7px 9px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
+              Password
+            </label>
+            <input
+              type="password" required value={password}
+              onChange={e => setPassword(e.target.value)}
+              style={{ width: '100%', padding: '7px 9px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+            />
+          </div>
+
+          {error && (
+            <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 3,
+              padding: '7px 10px', fontSize: 12, color: '#991b1b', marginBottom: 14 }}>
+              {error}
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} style={{
+            width: '100%', padding: '9px', background: '#1a2940', color: '#fff',
+            border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          }}>
+            {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+          </button>
+        </form>
+
+        <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#666' }}>
+          {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+          <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}
+            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+            {mode === 'signin' ? 'Create one' : 'Sign in'}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}

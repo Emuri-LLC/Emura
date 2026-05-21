@@ -11,6 +11,7 @@ import MaterialCostsTab  from '@/components/tabs/MaterialCostsTab';
 import EquipmentTab      from '@/components/tabs/EquipmentTab';
 import OperationsTab     from '@/components/tabs/OperationsTab';
 import SummaryTab        from '@/components/tabs/SummaryTab';
+import { createClient } from '@/lib/supabase';
 
 const TABS = [
   { id: 'info',    label: 'Quote Info'        },
@@ -97,12 +98,19 @@ export default function Home() {
     }
   }
 
+async function handleLogout() {
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  window.location.href = '/login';
+}
   return (
     <div id="app">
       <header>
         <h1>&#9883; Manufacturing Cost Estimator</h1>
         <div className="hdr-r">
           <span id="save-status">Saved</span>
+          <button className="btn btn-neu btn-sm" onClick={handleLogout}>Logout
+          </button>
           <button className="btn btn-undo btn-sm"
             onClick={handleUndo} disabled={history.length === 0}>
             &#8630; Undo
