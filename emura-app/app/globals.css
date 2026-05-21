@@ -83,4 +83,7 @@ tr[draggable].drag-after > td{box-shadow:0 2px 0 0 #4d9fff}
 .stbl .sub{color:#555;font-size:11.5px}.stbl .inc{color:#c0392b}
 .stbl td input[type=number]{font-family:inherit;text-align:right;width:60px;padding:2px 4px;font-size:12px}
 .num{font-family:monospace}.empty-msg{color:#888;font-size:12px;padding:6px 0}
-.op-name{min-width:110px}.notes-col{min-width:90px}
+.op-name{min-width:110px}.notes-col{min-width:90px}/* Drawer */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200}
+.drawer-panel{position:fixed;top:0;right:0;bottom:0;width:380px;background:#fff;box-shadow:-3px 0 18px rgba(0,0,0,.18);z-index:201;display:flex;flex-direction:column;overflow:hidden}
+@media(max-width:480px){.drawer-panel{width:100vw}}

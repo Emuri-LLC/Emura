@@ -1,16 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginContent() {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [company, setCompany]   = useState('');
   const [mode, setMode]         = useState<'signin' | 'signup'>('signin');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+
+  // Pre-fill email if an invite token is present in the URL
+  useEffect(() => {
+    const inviteEmail = searchParams.get('email');
+    if (inviteEmail) { setEmail(inviteEmail); setMode('signup'); }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -18,15 +26,29 @@ export default function LoginPage() {
     setLoading(true);
     const supabase = createClient();
 
-    const { error } =
-      mode === 'signin'
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+    if (mode === 'signin') {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (error) { setError(error.message); return; }
+    } else {
+      if (!company.trim()) { setError('Company name is required.'); setLoading(false); return; }
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) { setLoading(false); setError(error.message); return; }
+      // Create org + default site + department + admin membership
+      const { error: rpcError } = await supabase.rpc('create_org_for_new_user', { org_name: company.trim() });
+      setLoading(false);
+      if (rpcError) { setError('Account created but org setup failed: ' + rpcError.message); return; }
+    }
 
-    setLoading(false);
-    if (error) { setError(error.message); return; }
-    router.push('/');
+    // If this login came from an invite link, redirect back to the join page
+    const token = searchParams.get('token');
+    router.push(token ? `/join?token=${token}` : '/');
   }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '7px 9px', border: '1px solid #cdd',
+    borderRadius: 3, fontSize: 13, boxSizing: 'border-box',
+  };
 
   return (
     <div style={{
@@ -49,22 +71,23 @@ export default function LoginPage() {
             <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
               Email
             </label>
-            <input
-              type="email" required value={email}
-              onChange={e => setEmail(e.target.value)}
-              style={{ width: '100%', padding: '7px 9px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
-            />
+            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
           </div>
+
+          {mode === 'signup' && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
+                Company Name
+              </label>
+              <input type="text" required value={company} onChange={e => setCompany(e.target.value)} style={inputStyle} />
+            </div>
+          )}
 
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
               Password
             </label>
-            <input
-              type="password" required value={password}
-              onChange={e => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '7px 9px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
-            />
+            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} />
           </div>
 
           {error && (
@@ -91,5 +114,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

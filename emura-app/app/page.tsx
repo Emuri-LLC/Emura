@@ -1,8 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { loadState, saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState } from '@/lib/calculations';
+import { createClient } from '@/lib/supabase';
+import type { OrgContext } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote } from '@/lib/db';
+import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
 import FinishedGoodsTab  from '@/components/tabs/FinishedGoodsTab';
@@ -11,7 +15,8 @@ import MaterialCostsTab  from '@/components/tabs/MaterialCostsTab';
 import EquipmentTab      from '@/components/tabs/EquipmentTab';
 import OperationsTab     from '@/components/tabs/OperationsTab';
 import SummaryTab        from '@/components/tabs/SummaryTab';
-import { createClient } from '@/lib/supabase';
+import QuotesList        from '@/components/QuotesList';
+import AdminDrawer       from '@/components/AdminDrawer';
 
 const TABS = [
   { id: 'info',    label: 'Quote Info'        },
@@ -24,19 +29,65 @@ const TABS = [
 ];
 
 export default function Home() {
-  const [appState, setAppState]     = useState<AppState | null>(null);
-  const [currentTab, setCurrentTab] = useState('info');
-  const [history, setHistory]       = useState<AppState[]>([]);
-  // Incrementing this key forces tabs with uncontrolled inputs to remount
-  // and pick up fresh defaultValues after undo / import / new.
-  const [resetKey, setResetKey]     = useState(0);
+  const [appState, setAppState]       = useState<AppState | null>(null);
+  const [quoteId, setQuoteId]         = useState<string | null>(null);
+  const [orgCtx, setOrgCtx]           = useState<OrgContext | null>(null);
+  const [quotes, setQuotes]           = useState<QuoteSummary[]>([]);
+  const [userId, setUserId]           = useState('');
+  const [currentTab, setCurrentTab]   = useState('info');
+  const [history, setHistory]         = useState<AppState[]>([]);
+  const [resetKey, setResetKey]       = useState(0);
+  const [adminOpen, setAdminOpen]     = useState(false);
+  const [saveStatus, setSaveStatus]   = useState('Saved');
 
-  useEffect(() => { setAppState(loadState()); }, []);
+  // Debounce timer for cloud saves
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const supabase = createClient();
+
+  // ── Bootstrap ───────────────────────────────────────────────
+
+  useEffect(() => {
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
+
+      const ctx = await getMyOrgContext(supabase);
+      setOrgCtx(ctx);
+
+      if (ctx) {
+        const qs = await listQuotes(supabase);
+        setQuotes(qs);
+      }
+    }
+    init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Cloud save (debounced) ───────────────────────────────────
+
+  const cloudSave = useCallback((id: string, state: AppState) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaveStatus('Saving…');
+    saveTimer.current = setTimeout(async () => {
+      await saveQuote(supabase, id, state);
+      setQuotes(prev => prev.map(q =>
+        q.id === id
+          ? { ...q, name: state.quote.name || 'New Quote', customer: state.quote.customer || '', updatedAt: new Date().toISOString() }
+          : q
+      ));
+      setSaveStatus('Saved');
+    }, 1000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Handlers ────────────────────────────────────────────────
 
   function handleUpdate(newState: AppState) {
     setHistory(prev => [...prev.slice(-39), appState!]);
     setAppState(newState);
-    saveState(newState);
+    saveState(newState);                           // localStorage cache
+    if (quoteId) cloudSave(quoteId, newState);    // cloud save (debounced)
   }
 
   function handleUndo() {
@@ -45,15 +96,49 @@ export default function Home() {
     setHistory(h => h.slice(0, -1));
     setAppState(prev);
     saveState(prev);
+    if (quoteId) cloudSave(quoteId, prev);
     setResetKey(k => k + 1);
   }
 
-  function handleNew() {
+  async function handleNew() {
+    if (!orgCtx?.departmentId) return;
     const fresh = defaultState();
     setHistory(prev => [...prev.slice(-39), appState!]);
+    const id = await createQuote(supabase, fresh, orgCtx.departmentId);
+    if (!id) return;
+    setQuoteId(id);
     setAppState(fresh);
     saveState(fresh);
     setResetKey(k => k + 1);
+    setQuotes(prev => [{
+      id,
+      name:      fresh.quote.name,
+      customer:  fresh.quote.customer,
+      updatedAt: new Date().toISOString(),
+      createdBy: userId,
+    }, ...prev]);
+  }
+
+  async function handleOpenQuote(id: string) {
+    const state = await loadQuote(supabase, id);
+    if (!state) return;
+    setHistory([]);
+    setQuoteId(id);
+    setAppState(state);
+    saveState(state);
+    setResetKey(k => k + 1);
+  }
+
+  function handleBackToList() {
+    setQuoteId(null);
+    setAppState(null);
+    setHistory([]);
+  }
+
+  async function handleDeleteQuote(id: string) {
+    await deleteQuote(supabase, id);
+    setQuotes(prev => prev.filter(q => q.id !== id));
+    if (quoteId === id) handleBackToList();
   }
 
   function handleExport() {
@@ -74,6 +159,7 @@ export default function Home() {
         setHistory(prev => [...prev.slice(-39), appState!]);
         setAppState(imported);
         saveState(imported);
+        if (quoteId) cloudSave(quoteId, imported);
         setResetKey(k => k + 1);
       } catch { /* invalid file */ }
     };
@@ -81,9 +167,29 @@ export default function Home() {
     e.target.value = '';
   }
 
-  if (!appState) return null;
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    localStorage.removeItem(STORE_KEY);
+    window.location.href = '/login';
+  }
 
-  const sharedProps = { state: appState, onUpdate: handleUpdate, resetKey };
+  // ── Render ───────────────────────────────────────────────────
+
+  // Still bootstrapping
+  if (orgCtx === null && userId === '') return null;
+
+  // No org yet — new user whose create_org RPC may still be running; show loading
+  if (orgCtx === null) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef0f4' }}>
+        <p style={{ color: '#555', fontSize: 14 }}>Setting up your account…</p>
+      </div>
+    );
+  }
+
+  const canEdit = orgCtx.role === 'admin' || orgCtx.role === 'estimator';
+
+  const sharedProps = { state: appState!, onUpdate: handleUpdate, resetKey };
 
   function renderTab() {
     switch (currentTab) {
@@ -98,46 +204,106 @@ export default function Home() {
     }
   }
 
-async function handleLogout() {
-  const supabase = createClient();
-  await supabase.auth.signOut();
-  localStorage.removeItem(STORE_KEY);
-  window.location.href = '/login';
-}
   return (
     <div id="app">
       <header>
-        <h1>&#9883; Manufacturing Cost Estimator</h1>
+        <h1>
+          {quoteId && (
+            <button
+              onClick={handleBackToList}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6',
+                fontSize: 13, fontWeight: 600, marginRight: 10, padding: 0 }}
+              title="Back to quotes list"
+            >
+              ← Quotes
+            </button>
+          )}
+          &#9883; Manufacturing Cost Estimator
+        </h1>
         <div className="hdr-r">
-          <span id="save-status">Saved</span>
-          <button className="btn btn-neu btn-sm" onClick={handleLogout}>Logout
-          </button>
-          <button className="btn btn-undo btn-sm"
-            onClick={handleUndo} disabled={history.length === 0}>
-            &#8630; Undo
-          </button>
-          <button className="btn btn-neu btn-sm" onClick={handleNew}>New</button>
-          <button className="btn btn-neu btn-sm" onClick={handleExport}>Export</button>
-          <label className="btn btn-neu btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
-            Import
-            <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
-          </label>
+          <span id="save-status">{quoteId ? saveStatus : ''}</span>
+
+          {orgCtx.role === 'admin' && (
+            <button className="btn btn-neu btn-sm" onClick={() => setAdminOpen(true)} title="Settings">⚙</button>
+          )}
+
+          <button className="btn btn-neu btn-sm" onClick={handleLogout}>Logout</button>
+
+          {quoteId && appState && (
+            <>
+              <button className="btn btn-undo btn-sm"
+                onClick={handleUndo} disabled={history.length === 0}>
+                &#8630; Undo
+              </button>
+              <button className="btn btn-neu btn-sm" onClick={handleExport}>Export</button>
+              <label className="btn btn-neu btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+                Import
+                <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
+              </label>
+            </>
+          )}
+
+          {!quoteId && canEdit && (
+            <button className="btn btn-add btn-sm" onClick={handleNew}>+ New Quote</button>
+          )}
         </div>
       </header>
 
-      <nav id="tabs">
-        {TABS.map(tab => (
-          <button key={tab.id}
-            className={`tab-btn${currentTab === tab.id ? ' active' : ''}`}
-            onClick={() => setCurrentTab(tab.id)}>
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+      {/* Quote list view */}
+      {!quoteId && (
+        <main style={{ padding: '14px 16px', flex: 1, overflowX: 'auto' }}>
+          <QuotesList
+            quotes={quotes}
+            userId={userId}
+            role={orgCtx.role}
+            onOpen={handleOpenQuote}
+            onNew={handleNew}
+            onDelete={handleDeleteQuote}
+          />
+        </main>
+      )}
 
-      <main style={{ padding: '14px 16px', flex: 1, overflowX: 'auto' }}>
-        {renderTab()}
-      </main>
+      {/* Quote editor view */}
+      {quoteId && appState && (
+        <>
+          <nav id="tabs">
+            {TABS.map(tab => (
+              <button key={tab.id}
+                className={`tab-btn${currentTab === tab.id ? ' active' : ''}`}
+                onClick={() => setCurrentTab(tab.id)}>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+          <main style={{ padding: '14px 16px', flex: 1, overflowX: 'auto' }}>
+            {canEdit ? renderTab() : (
+              // Viewer: render tab but onUpdate is a no-op
+              (() => {
+                const viewProps = { state: appState, onUpdate: () => {}, resetKey };
+                switch (currentTab) {
+                  case 'info':    return <QuoteInfoTab     {...viewProps} />;
+                  case 'fgs':     return <FinishedGoodsTab {...viewProps} />;
+                  case 'bom':     return <BOMTab           {...viewProps} />;
+                  case 'matcost': return <MaterialCostsTab {...viewProps} />;
+                  case 'equip':   return <EquipmentTab     {...viewProps} />;
+                  case 'ops':     return <OperationsTab    {...viewProps} />;
+                  case 'summary': return <SummaryTab       {...viewProps} />;
+                  default:        return <QuoteInfoTab     {...viewProps} />;
+                }
+              })()
+            )}
+          </main>
+        </>
+      )}
+
+      {adminOpen && (
+        <AdminDrawer
+          open={adminOpen}
+          onClose={() => setAdminOpen(false)}
+          orgCtx={orgCtx}
+          onOrgRenamed={name => setOrgCtx(prev => prev ? { ...prev, orgName: name } : prev)}
+        />
+      )}
     </div>
   );
 }
