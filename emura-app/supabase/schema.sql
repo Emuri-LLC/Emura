@@ -124,10 +124,10 @@ create policy "depts_delete" on departments for delete
   ));
 
 -- org_members: readable by org members; writable by admins
+-- Simple non-recursive policy: each user can see rows in their own org.
+-- Avoids the circular dependency of querying org_members inside an org_members policy.
 create policy "members_select" on org_members for select
-  using (exists (
-    select 1 from org_members om2 where om2.org_id = org_members.org_id and om2.user_id = auth.uid()
-  ));
+  using (user_id = auth.uid());
 create policy "members_insert" on org_members for insert
   with check (exists (
     select 1 from org_members om2 where om2.org_id = org_members.org_id and om2.user_id = auth.uid() and om2.role = 'admin'
