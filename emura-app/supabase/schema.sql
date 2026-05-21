@@ -194,22 +194,26 @@ create policy "quotes_delete" on quotes for delete
 
 -- ── RPC Functions ─────────────────────────────────────────────
 
--- Called once after signup: creates org + Main Site + General dept + admin membership
-create or replace function create_org_for_new_user(org_name text)
+-- Called once after signup: creates org + Main Site + General dept + admin membership.
+-- Accepts explicit uid fallback for when email confirmation is on and no session exists yet.
+create or replace function create_org_for_new_user(org_name text, uid uuid default null)
 returns uuid language plpgsql security definer as $$
 declare
+  v_uid  uuid;
   v_org  uuid;
   v_site uuid;
   v_dept uuid;
 begin
+  v_uid := coalesce(auth.uid(), uid);
+  if v_uid is null then raise exception 'User ID could not be determined'; end if;
   insert into organizations (name, created_by)
-    values (org_name, auth.uid()) returning id into v_org;
+    values (org_name, v_uid) returning id into v_org;
   insert into sites (org_id, name)
     values (v_org, 'Main Site') returning id into v_site;
   insert into departments (site_id, name)
     values (v_site, 'General') returning id into v_dept;
   insert into org_members (org_id, user_id, role, department_id)
-    values (v_org, auth.uid(), 'admin', v_dept);
+    values (v_org, v_uid, 'admin', v_dept);
   return v_org;
 end; $$;
 

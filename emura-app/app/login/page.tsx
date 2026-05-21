@@ -32,10 +32,13 @@ function LoginContent() {
       if (error) { setError(error.message); return; }
     } else {
       if (!company.trim()) { setError('Company name is required.'); setLoading(false); return; }
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { data: signUpData, error } = await supabase.auth.signUp({ email, password });
       if (error) { setLoading(false); setError(error.message); return; }
-      // Create org + default site + department + admin membership
-      const { error: rpcError } = await supabase.rpc('create_org_for_new_user', { org_name: company.trim() });
+      // Pass uid explicitly — auth.uid() is null when email confirmation is enabled
+      const { error: rpcError } = await supabase.rpc('create_org_for_new_user', {
+        org_name: company.trim(),
+        uid: signUpData.user?.id,
+      });
       setLoading(false);
       if (rpcError) { setError('Account created but org setup failed: ' + rpcError.message); return; }
     }
