@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data:",
-              "connect-src 'self' https://*.supabase.com",
+              "connect-src 'self' https://*.supabase.com https://*.supabase.co",
               "font-src 'self'",
               "frame-ancestors 'none'",
             ].join('; '),

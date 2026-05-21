@@ -130,7 +130,7 @@ settings     { shopRate, indirectRate, capexYears, workingHoursPerYear }
 - Only the Supabase anon key is used client-side; secret key never touches the frontend
 
 ### HTTP security headers (next.config.ts)
-- `Content-Security-Policy`: restricts scripts/styles to self + inline (required for Next.js/JSX inline styles); images allow `data:` for pasted notes; connect allows `*.supabase.com`
+- `Content-Security-Policy`: restricts scripts/styles to self + inline (required for Next.js/JSX inline styles); images allow `data:` for pasted notes; connect allows `*.supabase.com` and `*.supabase.co` (Supabase uses the `.co` TLD for project endpoints)
 - `X-Frame-Options: DENY` — blocks clickjacking
 - `X-Content-Type-Options: nosniff` — prevents MIME sniffing
 - `Referrer-Policy: strict-origin-when-cross-origin`
