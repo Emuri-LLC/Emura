@@ -227,7 +227,9 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
 
--- Accept an invite token: inserts org_members row and marks invite accepted
+-- Accept an invite token: inserts org_members row and marks invite accepted.
+-- Rejects if the authenticated user's email does not match the invite email,
+-- preventing account hijacking via stolen invite links.
 create or replace function accept_org_invite(invite_token text)
 returns void language plpgsql security definer as $$
 declare
@@ -238,6 +240,9 @@ begin
     and accepted_at is null
     and expires_at > now();
   if not found then
+    raise exception 'Invalid or expired invite token';
+  end if;
+  if lower(v_invite.email) <> lower(auth.jwt()->>'email') then
     raise exception 'Invalid or expired invite token';
   end if;
   insert into org_members (org_id, user_id, role, department_id)

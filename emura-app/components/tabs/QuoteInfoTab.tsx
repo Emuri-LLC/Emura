@@ -17,7 +17,11 @@ export default function QuoteInfoTab({ state, onUpdate }: Props) {
   // We don't update it on every render — that would reset the cursor.
   useEffect(() => {
     if (notesRef.current) {
-      notesRef.current.innerHTML = DOMPurify.sanitize(state.quote.notes ?? '', { ADD_TAGS: ['img'], ADD_ATTR: ['src', 'style'] });
+      notesRef.current.innerHTML = DOMPurify.sanitize(state.quote.notes ?? '', {
+        ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'em', 'strong', 'img'],
+        ALLOWED_ATTR: ['src'],
+        ALLOW_DATA_ATTR: false,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

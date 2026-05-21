@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import type { AppState } from './calculations';
 
 // ── Storage key ───────────────────────────────────────────────
@@ -63,6 +64,15 @@ export function defaultState(): AppState {
 export function migrateState(s: Record<string, unknown>): AppState {
   const state = s as unknown as AppState;
   const def = defaultState();
+
+  // Sanitize notes at import time so raw XSS payloads never reach storage.
+  if (typeof window !== 'undefined' && state.quote?.notes) {
+    state.quote.notes = DOMPurify.sanitize(state.quote.notes, {
+      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'em', 'strong', 'img'],
+      ALLOWED_ATTR: ['src'],
+      ALLOW_DATA_ATTR: false,
+    });
+  }
 
   // Settings defaults
   if (!state.settings) (state as unknown as Record<string, unknown>).settings = {};
