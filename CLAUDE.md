@@ -11,7 +11,7 @@ per volume break.
 - Company: Emuri, LLC
 - Product: Emura
 - Owner: Ethan Meyers (ebmeyers on GitHub)
-- Stage: Phase 3 complete — auth live at emura.io
+- Stage: Phase 4 complete — cloud save + org schema live at emura.io
 
 ## URLs
 - Production: https://emura.io
@@ -28,7 +28,8 @@ per volume break.
 - Frontend: Next.js 16 (React, App Router, TypeScript)
 - Hosting: Vercel (auto-deploys on git push to main)
 - Auth: Supabase (`@supabase/supabase-js` + `@supabase/ssr`) — live
-- Database / Cloud save: Supabase Postgres (Phase 4 — not yet implemented)
+- Database / Cloud save: Supabase Postgres — live (quotes stored as JSONB per user/department)
+- Email: Resend (transactional auth emails via custom SMTP on emura.io domain)
 - Payments: Stripe (Phase 6 — not yet implemented)
 - Domain registrar: Namecheap (emura.io connected to Vercel)
 
@@ -46,20 +47,28 @@ per volume break.
 - ✅ Phase 1: Get something live on Vercel
 - ✅ Phase 2: Full React migration — all 7 tabs, calculations, drag-and-drop
 - ✅ Phase 3: Supabase authentication — login/signup live, app gated behind auth
-- 🔜 Phase 4: Cloud save/load (replace localStorage with Supabase JSONB per user)
-- Phase 5: Organizations and sharing (org model, invite flow, roles)
-- Phase 6: Launch prep (Stripe subscriptions, custom email, error tracking)
+- ✅ Phase 4: Cloud save + org schema — quotes in Supabase JSONB, org/site/dept hierarchy, admin drawer, invite flow
+- 🔜 Phase 5: Organizations and sharing — cross-user quote visibility, org switcher, share links
+- Phase 6: Launch prep (Stripe subscriptions, error tracking)
 
-## Current state (Phase 3 complete)
+## Current state (Phase 4 complete)
 - `index.html`: original prototype, kept for reference only, NOT deployed
 - `manufacturing-cost-estimator-spec.html`: product specification document
 - `emura-app/`: the live Next.js application deployed to emura.io
 - `emura-app/public/emura.js`: intentional stub (3-line comment), all logic is in React
 - All 7 tabs fully functional in React: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary
-- Auth required: unauthenticated users redirected to `/login`; logout button in header
-- State still persists to localStorage (`STORE_KEY = 'mce_v4'`) — cloud save is Phase 4
-- Undo/redo via history stack in page.tsx (40-state depth)
-- Export/Import as JSON
+- Auth required: unauthenticated users redirected to `/login`; logout clears localStorage
+- Quotes stored in Supabase (`quotes` table, JSONB `state` column) per department
+- localStorage is a write-through cache — used as offline fallback only
+- 1-second debounced cloud save on every state change; `saveStatus` shown in header
+- App entry point is a Quotes list — open a quote to enter the tab editor
+- `← Quotes` button in header returns to the list without losing the current quote
+- Org hierarchy: organizations → sites → departments; users are org_members with a role
+- Roles: `admin` (full access + settings), `estimator` (create/edit quotes), `viewer` (read-only)
+- Auto-creates org + Main Site + General dept on signup via `handle_new_user` trigger on auth.users
+- Admin gear icon (⚙) opens slide-out drawer: manage org name, sites, departments, users, invite links
+- Token-based invite flow: admin generates link → `/join?token=...` → recipient signs up/in → auto-joined
+- Undo/redo via history stack in page.tsx (40-state depth); Export/Import as JSON still available
 - All calculations run client-side synchronously
 
 ## Key file locations
@@ -70,9 +79,18 @@ per volume break.
 - `emura-app/app/globals.css` — all CSS (migrated from index.html)
 - `emura-app/app/login/page.tsx` — login/signup page; handles both modes with toggle link
 
-### Auth
-- `emura-app/proxy.ts` — Next.js 16 auth gate (replaces middleware.ts); redirects unauthenticated users to /login
+### Auth & routing
+- `emura-app/proxy.ts` — Next.js 16 auth gate; `/join` bypassed so unauthenticated users can accept invites
 - `emura-app/lib/supabase.ts` — browser Supabase client factory (`createClient()`)
+- `emura-app/app/join/page.tsx` — invite token acceptance; calls `accept_org_invite` RPC
+
+### Cloud save & org
+- `emura-app/lib/db.ts` — all Supabase query functions: `getMyOrgContext`, `listQuotes`, `loadQuote`, `createQuote`, `saveQuote`, `deleteQuote`, org/site/dept/member management, `createInvite`
+- `emura-app/supabase/schema.sql` — full schema: tables, RLS policies, `handle_new_user` trigger, `accept_org_invite` RPC
+
+### Components
+- `emura-app/components/QuotesList.tsx` — quote picker; entry point before a quote is open
+- `emura-app/components/AdminDrawer.tsx` — slide-out settings panel (admin only); sites/depts/users/invite
 
 ### Logic
 - `emura-app/lib/calculations.ts` — all cost math as pure functions; defines all TypeScript interfaces
@@ -137,9 +155,66 @@ settings     { shopRate, indirectRate, capexYears, workingHoursPerYear }
 - `Permissions-Policy` — disables camera, microphone, geolocation
 
 ### What's intentionally deferred
-- localStorage is plaintext — by design until Phase 4 (Supabase cloud save)
-- No server-side CSRF tokens — no server mutations yet; Supabase SDK handles this in Phase 4
+- localStorage is now a cache (write-through), not primary storage — primary is Supabase
+- No server-side CSRF tokens — Supabase SDK handles request signing
 - No client-side login rate limiting — Supabase enforces server-side; add UI feedback in Phase 6
+
+## Supabase / Phase 4 gotchas
+
+### auth.users trigger: use security definer + search_path + row_security off
+Triggers on `auth.users` run in the `auth` schema context. Without explicit settings the function
+cannot find `public` tables and RLS may silently block inserts even with `security definer`:
+```sql
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer
+set search_path = public
+set row_security = off
+as $$ … $$;
+```
+Always use fully-qualified table names (`public.organizations`, not `organizations`) inside the function.
+
+### Don't call an RPC after signUp() to create org data
+`signUp()` returns an obfuscated response when email confirmation is enabled — `data.user` may be
+null or unreliable. Use an `after insert on auth.users` trigger instead. Pass company name via
+`options.data` in signUp and read it from `new.raw_user_meta_data->>'company_name'` in the trigger.
+
+### Self-referential RLS policies return empty
+A policy that queries the same table it protects causes PostgreSQL to short-circuit to empty.
+```sql
+-- BAD: queries org_members inside the org_members policy
+using (exists (select 1 from org_members where org_id = org_members.org_id and user_id = auth.uid()))
+
+-- GOOD: non-recursive
+using (user_id = auth.uid())
+```
+For policies that need to traverse relationships, use a `security definer` helper function to
+break the recursion.
+
+### created_by FK on user-created records must allow cascade or nullability
+`organizations.created_by`, `quotes.created_by`, and `org_invites.created_by` reference `auth.users`.
+Without `on delete set null`, deleting a user in the Supabase dashboard fails with a FK violation.
+Always use `references auth.users on delete set null` (and drop the `not null` constraint) for
+audit columns where the record should outlive the user.
+
+### Supabase project endpoints use the .co TLD
+The project-specific API URL is `https://<ref>.supabase.co` (not `.supabase.com`).
+The CSP `connect-src` must allow both `*.supabase.co` and `*.supabase.com` to cover all
+Supabase services. Ensure `.env.local` and Vercel env vars use `.supabase.co`.
+
+### emailRedirectTo and Supabase Site URL
+- Set Supabase Site URL to `https://emura.io` with the `https://` prefix — omitting it causes
+  Supabase to treat the value as a relative path and construct a broken redirect URL.
+- Add both `https://emura.io/**` and `http://localhost:3000/**` to Supabase Redirect URLs.
+- Pass `emailRedirectTo: window.location.origin` (no trailing slash) in `signUp()` so local
+  dev confirmation links go to localhost and production links go to emura.io.
+
+### useSearchParams() requires Suspense in Next.js 16
+Any page component that calls `useSearchParams()` must be wrapped in `<Suspense>` or the
+production build fails with "missing-suspense-with-csr-bailout". Pattern:
+```tsx
+function PageContent() { const p = useSearchParams(); … }
+export default function Page() { return <Suspense><PageContent /></Suspense>; }
+```
 
 ## Critical implementation gotchas
 

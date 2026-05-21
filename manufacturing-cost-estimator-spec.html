@@ -30,7 +30,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </head>
 <body>
 <h1>Emura — Manufacturing Cost Estimator</h1>
-<p class="subtitle">Product Specification — Version 0.4 — May 2026</p>
+<p class="subtitle">Product Specification — Version 0.5 — May 2026</p>
 <nav>
   <a href="#s1">1 Overview</a><a href="#s2">2 Concepts</a><a href="#s3">3 Modules</a>
   <a href="#s4">4 Data Model</a><a href="#s5">5 Calculations</a><a href="#s6">6 UX</a>
@@ -60,13 +60,27 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </ul>
 
 <h3>1.2 Access</h3>
-<p>A free account is required. Create one at <a href="https://emura.io/login">emura.io/login</a> using an email address and password. Once logged in, your session persists across browser sessions — you will not need to log in again on the same device unless you explicitly log out. A <strong>Logout</strong> button is available in the application header.</p>
-<p>Quotes are currently stored in your browser's local storage, meaning they are tied to the device and browser you used to create them. Cloud sync (access from any device) is coming in a future release. Use the <strong>Export</strong> button in the header to save a JSON backup of any quote, and <strong>Import</strong> to restore it.</p>
+<p>A free account is required. Create one at <a href="https://emura.io/login">emura.io/login</a> with your email, a password, and your company name. A confirmation email is sent — click the link to activate your account, then sign in. Your organization, a default site, and a default department are automatically created when your account is confirmed.</p>
+<p>Once logged in, your session persists across browser sessions. A <strong>Logout</strong> button is available in the application header.</p>
 
-<h3>1.3 Non-Goals (current version)</h3>
+<h3>1.3 Quotes and Cloud Save</h3>
+<p>Quotes are stored in the cloud and tied to your account, accessible from any device or browser. The app opens to a <strong>My Quotes</strong> list showing all quotes you have access to. Click a quote to open it, or click <strong>+ New Quote</strong> to create one. A <strong>← Quotes</strong> button in the header returns you to the list without losing your work.</p>
+<p>Quotes auto-save to the cloud as you work (with a 1-second debounce). A save status indicator in the header confirms when changes have been synced. Your browser's local storage also holds a copy as an offline fallback. Use <strong>Export</strong> to download a JSON backup and <strong>Import</strong> to restore one.</p>
+
+<h3>1.4 Organizations, Sites, and Departments</h3>
+<p>Every account belongs to an organization. Organizations are divided into <strong>sites</strong> (facilities or plants) and each site contains <strong>departments</strong>. Quotes are owned by a department. Users belong to an organization with one of three roles:</p>
+<ul>
+  <li><strong>Admin</strong> — full access; can manage the org, sites, departments, users, and all quotes</li>
+  <li><strong>Estimator</strong> — can create and edit quotes in their department</li>
+  <li><strong>Viewer</strong> — read-only access to quotes in their department</li>
+</ul>
+<p>Admins can invite new users by generating an invite link from the <strong>Settings</strong> drawer (⚙ icon in the header). The link is valid for 7 days. The recipient signs up or signs in and is automatically added to the org with the assigned role and department.</p>
+
+<h3>1.5 Non-Goals (current version)</h3>
 <ul>
   <li>ERP/MRP integration, CRM, inventory management, accounting</li>
-  <li>Multi-user collaboration, organizational accounts, and cloud sync are planned for future releases (see §8)</li>
+  <li>Real-time co-editing (multiple users editing the same quote simultaneously)</li>
+  <li>Cross-organization quote sharing is planned for a future release (see §8)</li>
 </ul>
 
 <h2 id="s2">2. Key Concepts</h2>
@@ -425,10 +439,14 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <h3>8.1 Platform Features</h3>
 <table>
 <tr><th>Feature</th><th>Status</th><th>Description</th></tr>
-<tr><td>User authentication</td><td>✅ Live</td><td>Login / signup at emura.io/login; app gated behind user accounts</td></tr>
-<tr><td>Cloud save / sync</td><td>In development</td><td>Quotes stored in the cloud per user; accessible from any device; local storage remains as offline fallback</td></tr>
-<tr><td>Organizational accounts</td><td>Planned</td><td>Multiple users under one company account; share quotes within the org</td></tr>
-<tr><td>Role-based access</td><td>Planned</td><td>Admin, estimator, read-only roles per organization</td></tr>
+<tr><td>User authentication</td><td>✅ Live</td><td>Login / signup at emura.io/login; app gated behind user accounts; confirmation email via Resend</td></tr>
+<tr><td>Cloud save / sync</td><td>✅ Live</td><td>Quotes stored in Supabase per user/department; accessible from any device; local storage is offline fallback; 1-second debounced auto-save</td></tr>
+<tr><td>Org / site / department hierarchy</td><td>✅ Live</td><td>Organizations contain sites; sites contain departments; quotes belong to departments; admin drawer to manage the full hierarchy</td></tr>
+<tr><td>Role-based access</td><td>✅ Live</td><td>Admin, Estimator, Viewer roles; admins can invite users via 7-day token links</td></tr>
+<tr><td>Cross-user quote sharing</td><td>🔜 Phase 5</td><td>Estimators see all quotes in their department (not just their own); org-wide quote visibility for admins</td></tr>
+<tr><td>Org switcher</td><td>🔜 Phase 5</td><td>Users who belong to multiple orgs can switch between them</td></tr>
+<tr><td>Stripe subscriptions</td><td>Planned</td><td>Free tier + paid plans; billing portal; seat-based pricing</td></tr>
+<tr><td>Error tracking</td><td>Planned</td><td>Sentry or equivalent; alert on unhandled exceptions in production</td></tr>
 </table>
 
 <h3>8.2 Estimating Enhancements</h3>
@@ -454,6 +472,6 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 </table>
 
 <hr style="margin-top:48px;border:none;border-top:1px solid #ddd">
-<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.4 — May 2026 — Emuri, LLC</p>
+<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.5 — May 2026 — Emuri, LLC</p>
 </body>
 </html>
