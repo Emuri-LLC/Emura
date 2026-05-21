@@ -61,7 +61,7 @@ export function defaultState(): AppState {
 // Brings older saved states up to the current schema.
 
 export function migrateState(s: Record<string, unknown>): AppState {
-  const state = s as AppState;
+  const state = s as unknown as AppState;
   const def = defaultState();
 
   // Settings defaults
