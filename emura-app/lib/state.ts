@@ -82,13 +82,25 @@ export function migrateState(s: Record<string, unknown>): AppState {
   if (settings.capexYears == null)          settings.capexYears = def.settings.capexYears;
   if (settings.workingHoursPerYear == null) settings.workingHoursPerYear = def.settings.workingHoursPerYear;
 
+  // Ensure all top-level arrays/objects exist before iterating or accessing them.
+  // migrateState is the only path for imported and loaded data, so missing fields
+  // here produce undefined arrays that crash tab components on .map()/.forEach().
+  if (!state.breaks)        state.breaks        = def.breaks;
+  if (!state.finishedGoods) state.finishedGoods = [];
+  if (!state.bom)           state.bom           = [];
+  if (!state.materialCosts) state.materialCosts = {};
+  if (!state.directOps)     state.directOps     = [];
+  if (!state.indirectOps)   state.indirectOps   = [];
+  if (!state.subcontracts)  state.subcontracts  = [];
+  if (!state.quote)         state.quote         = def.quote;
+
   // Breaks
-  (state.breaks || []).forEach(b => {
+  state.breaks.forEach(b => {
     if (b.totalEAU === undefined) b.totalEAU = 0;
   });
 
   // BOM: migrate old type field to fgSpecific boolean
-  (state.bom || []).forEach(item => {
+  state.bom.forEach(item => {
     const raw = item as unknown as Record<string, unknown>;
     if (item.fgSpecific === undefined) {
       item.fgSpecific = raw['type'] === 'fg-specific';
@@ -104,7 +116,7 @@ export function migrateState(s: Record<string, unknown>): AppState {
   if (!state.materialSources)  state.materialSources = {};
 
   // Direct ops: migrate old per-op capex to equipment entries
-  (state.directOps || []).forEach(op => {
+  state.directOps.forEach(op => {
     const raw = op as unknown as Record<string, unknown>;
     delete raw['lineSetupOverrides'];
     if (!op.equipmentIds) {
@@ -127,7 +139,7 @@ export function migrateState(s: Record<string, unknown>): AppState {
   });
 
   // Indirect ops
-  (state.indirectOps || []).forEach(op => {
+  state.indirectOps.forEach(op => {
     const raw = op as unknown as Record<string, unknown>;
     delete raw['lineSetupOverrides'];
   });
