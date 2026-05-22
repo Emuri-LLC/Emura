@@ -100,6 +100,118 @@ export interface AppState {
   margins: Record<string, number>;
 }
 
+// ── Parts & Equipment Library ─────────────────────────────────
+
+export interface LibraryPartPrice {
+  minQty: number;   // applies when annualPurchQty >= this
+  unitCost: number;
+  source: string;
+}
+
+export interface LibraryPart {
+  id: string;
+  partNumber: string;
+  description: string;
+  uom: string;
+  prices: LibraryPartPrice[];  // sorted ascending by minQty
+}
+
+export interface LibraryEquipment {
+  id: string;
+  name: string;
+  capex: number;
+  hourlyRunCost: number;
+  annualMaintenance: number;
+}
+
+export interface ReviewItem {
+  kind: 'part' | 'equipment';
+  itemName: string;
+  breakLabel?: string;     // parts: the volume break label
+  annualQty?: number;      // parts: annual purchasing qty at that break
+  field?: string;          // equipment: 'CapEx' | 'Run Rate' | 'Maintenance'
+  quoteValue: number;
+  libraryValue: number;
+  direction: 'red' | 'green'; // red = library >= quote (possible underestimate); green = library < quote
+}
+
+// Returns the best applicable library price for a given annual qty:
+// the highest min_qty tier that does not exceed annualQty.
+function applicablePrice(prices: LibraryPartPrice[], annualQty: number): LibraryPartPrice | null {
+  const candidates = prices.filter(p => p.minQty <= annualQty);
+  if (!candidates.length) return null;
+  return candidates.reduce((best, p) => p.minQty > best.minQty ? p : best);
+}
+
+export function computeQuoteReview(
+  state: AppState,
+  libraryParts: LibraryPart[],
+  libraryEquipment: LibraryEquipment[],
+): ReviewItem[] {
+  const items: ReviewItem[] = [];
+
+  // ── Parts ──────────────────────────────────────────────────
+  const partMap = new Map(libraryParts.map(p => [p.partNumber.trim().toLowerCase(), p]));
+
+  for (const bomItem of state.bom) {
+    if (bomItem.customerSupplied || !bomItem.partNumber.trim()) continue;
+    const libPart = partMap.get(bomItem.partNumber.trim().toLowerCase());
+    if (!libPart || !libPart.prices.length) continue;
+
+    for (let bki = 0; bki < state.breaks.length; bki++) {
+      const brk = state.breaks[bki];
+      const aq = annualPurchQty(state, bomItem, bki);
+      if (!aq) continue;
+
+      const found = findCost(state, bomItem.id, aq);
+      if (!found) continue;
+
+      const libPrice = applicablePrice(libPart.prices, aq);
+      if (!libPrice) continue;
+
+      if (Math.abs(libPrice.unitCost - found.cost) < 0.001) continue;
+
+      items.push({
+        kind: 'part',
+        itemName: bomItem.partNumber,
+        breakLabel: brk.label,
+        annualQty: aq,
+        quoteValue: found.cost,
+        libraryValue: libPrice.unitCost,
+        direction: libPrice.unitCost >= found.cost ? 'red' : 'green',
+      });
+    }
+  }
+
+  // ── Equipment ──────────────────────────────────────────────
+  const eqMap = new Map(libraryEquipment.map(e => [e.name.trim().toLowerCase(), e]));
+
+  for (const eq of state.equipment) {
+    const libEq = eqMap.get(eq.name.trim().toLowerCase());
+    if (!libEq) continue;
+
+    const checks: { field: string; quoteVal: number; libVal: number }[] = [
+      { field: 'CapEx',        quoteVal: eq.capex,              libVal: libEq.capex },
+      { field: 'Run Rate',     quoteVal: eq.hourlyRunCost,       libVal: libEq.hourlyRunCost },
+      { field: 'Maintenance',  quoteVal: eq.annualMaintenance,   libVal: libEq.annualMaintenance },
+    ];
+
+    for (const c of checks) {
+      if (Math.abs(c.libVal - c.quoteVal) < 0.01) continue;
+      items.push({
+        kind: 'equipment',
+        itemName: eq.name,
+        field: c.field,
+        quoteValue: c.quoteVal,
+        libraryValue: c.libVal,
+        direction: c.libVal > c.quoteVal ? 'red' : 'green',
+      });
+    }
+  }
+
+  return items;
+}
+
 export interface CostResult {
   mat: number;
   dl: number;

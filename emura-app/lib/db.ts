@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AppState } from './calculations';
+import type { AppState, LibraryPart, LibraryEquipment } from './calculations';
 import { migrateState } from './state';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -133,6 +133,44 @@ export async function saveQuote(
 
 export async function deleteQuote(supabase: SupabaseClient, id: string): Promise<void> {
   await supabase.from('quotes').delete().eq('id', id);
+}
+
+// ── Parts & Equipment Library ─────────────────────────────────
+
+export async function listLibraryParts(supabase: SupabaseClient): Promise<LibraryPart[]> {
+  const { data, error } = await supabase
+    .from('parts')
+    .select('id, part_number, description, uom, part_prices(min_qty, unit_cost, source)')
+    .order('part_number');
+
+  if (error || !data) return [];
+
+  return data.map(r => ({
+    id:          r.id,
+    partNumber:  r.part_number,
+    description: r.description,
+    uom:         r.uom,
+    prices: ((r.part_prices as { min_qty: number; unit_cost: number; source: string }[]) ?? [])
+      .map(p => ({ minQty: p.min_qty, unitCost: p.unit_cost, source: p.source }))
+      .sort((a, b) => a.minQty - b.minQty),
+  }));
+}
+
+export async function listLibraryEquipment(supabase: SupabaseClient): Promise<LibraryEquipment[]> {
+  const { data, error } = await supabase
+    .from('equipment_library')
+    .select('id, name, capex, hourly_run_cost, annual_maintenance')
+    .order('name');
+
+  if (error || !data) return [];
+
+  return data.map(r => ({
+    id:                r.id,
+    name:              r.name,
+    capex:             r.capex,
+    hourlyRunCost:     r.hourly_run_cost,
+    annualMaintenance: r.annual_maintenance,
+  }));
 }
 
 // ── Org management ────────────────────────────────────────────

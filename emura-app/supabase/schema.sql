@@ -192,6 +192,95 @@ create policy "quotes_delete" on quotes for delete
     )
   );
 
+-- ── Parts & Equipment Library (Phase 5) ──────────────────────
+
+create table parts (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid references organizations on delete cascade not null,
+  part_number text not null,
+  description text not null default '',
+  uom         text not null default 'EA',
+  notes       text not null default '',
+  created_by  uuid references auth.users on delete set null,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now(),
+  unique (org_id, part_number)
+);
+
+-- Tiered pricing: one row per part × annual-quantity threshold.
+-- min_qty is the annual purchasing quantity at or above which this price applies.
+create table part_prices (
+  id         uuid primary key default gen_random_uuid(),
+  part_id    uuid references parts on delete cascade not null,
+  min_qty    integer not null default 0,
+  unit_cost  numeric not null,
+  source     text not null default '',
+  updated_at timestamptz default now()
+);
+
+-- Org-wide equipment reference. site_id = null means all sites.
+create table equipment_library (
+  id                 uuid primary key default gen_random_uuid(),
+  org_id             uuid references organizations on delete cascade not null,
+  site_id            uuid references sites on delete cascade,
+  name               text not null,
+  capex              numeric not null default 0,
+  hourly_run_cost    numeric not null default 0,
+  annual_maintenance numeric not null default 0,
+  notes              text not null default '',
+  created_at         timestamptz default now(),
+  updated_at         timestamptz default now()
+);
+
+alter table parts            enable row level security;
+alter table part_prices      enable row level security;
+alter table equipment_library enable row level security;
+
+-- parts: all org members can read; admins and estimators can write
+create policy "parts_select" on parts for select
+  using (exists (
+    select 1 from org_members where org_id = parts.org_id and user_id = auth.uid()
+  ));
+create policy "parts_insert" on parts for insert
+  with check (exists (
+    select 1 from org_members where org_id = parts.org_id and user_id = auth.uid()
+      and role in ('admin','estimator')
+  ));
+create policy "parts_update" on parts for update
+  using (exists (
+    select 1 from org_members where org_id = parts.org_id and user_id = auth.uid()
+      and role in ('admin','estimator')
+  ));
+create policy "parts_delete" on parts for delete
+  using (exists (
+    select 1 from org_members where org_id = parts.org_id and user_id = auth.uid()
+      and role = 'admin'
+  ));
+
+-- part_prices: inherit access from parent part
+create policy "part_prices_select" on part_prices for select
+  using (exists (
+    select 1 from parts p join org_members om on om.org_id = p.org_id
+    where p.id = part_prices.part_id and om.user_id = auth.uid()
+  ));
+create policy "part_prices_write" on part_prices for all
+  using (exists (
+    select 1 from parts p join org_members om on om.org_id = p.org_id
+    where p.id = part_prices.part_id and om.user_id = auth.uid()
+      and om.role in ('admin','estimator')
+  ));
+
+-- equipment_library: all members read; admins write
+create policy "eqlib_select" on equipment_library for select
+  using (exists (
+    select 1 from org_members where org_id = equipment_library.org_id and user_id = auth.uid()
+  ));
+create policy "eqlib_write" on equipment_library for all
+  using (exists (
+    select 1 from org_members where org_id = equipment_library.org_id and user_id = auth.uid()
+      and role = 'admin'
+  ));
+
 -- ── RPC Functions ─────────────────────────────────────────────
 
 -- Trigger: fires on every new auth.users insert.

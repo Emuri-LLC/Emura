@@ -2,15 +2,19 @@
 
 import { useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
-import type { AppState } from '@/lib/calculations';
+import type { AppState, LibraryPart, LibraryEquipment } from '@/lib/calculations';
 import InfoIcon from '@/components/InfoIcon';
+import QuoteReview from '@/components/QuoteReview';
 
 interface Props {
   state: AppState;
   onUpdate: (state: AppState) => void;
+  resetKey?: number;
+  libraryParts?: LibraryPart[];
+  libraryEquipment?: LibraryEquipment[];
 }
 
-export default function QuoteInfoTab({ state, onUpdate }: Props) {
+export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libraryEquipment = [] }: Props) {
   const notesRef = useRef<HTMLDivElement>(null);
 
   // Set the contenteditable notes HTML once on mount.
@@ -52,6 +56,7 @@ export default function QuoteInfoTab({ state, onUpdate }: Props) {
   }
 
   return (
+    <>
     <div className="grid2">
 
       {/* ── Quote Information ── */}
@@ -159,5 +164,14 @@ export default function QuoteInfoTab({ state, onUpdate }: Props) {
       </div>
 
     </div>
+
+    {/* ── Quote Review ── */}
+    <QuoteReview
+      state={state}
+      libraryParts={libraryParts}
+      libraryEquipment={libraryEquipment}
+    />
+
+    </>
   );
 }

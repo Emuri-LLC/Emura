@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
-import type { AppState } from '@/lib/calculations';
+import type { AppState, LibraryPart, LibraryEquipment } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, listLibraryParts, listLibraryEquipment } from '@/lib/db';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -38,8 +38,10 @@ export default function Home() {
   const [history, setHistory]         = useState<AppState[]>([]);
   const [resetKey, setResetKey]       = useState(0);
   const [adminOpen, setAdminOpen]     = useState(false);
-  const [saveStatus, setSaveStatus]   = useState('Saved');
-  const [loaded, setLoaded]           = useState(false);
+  const [saveStatus, setSaveStatus]         = useState('Saved');
+  const [loaded, setLoaded]                 = useState(false);
+  const [libraryParts, setLibraryParts]     = useState<LibraryPart[]>([]);
+  const [libraryEquipment, setLibraryEquip] = useState<LibraryEquipment[]>([]);
 
   // Debounce timer for cloud saves
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,8 +59,14 @@ export default function Home() {
       setOrgCtx(ctx);
 
       if (ctx) {
-        const qs = await listQuotes(supabase);
+        const [qs, lp, le] = await Promise.all([
+          listQuotes(supabase),
+          listLibraryParts(supabase),
+          listLibraryEquipment(supabase),
+        ]);
         setQuotes(qs);
+        setLibraryParts(lp);
+        setLibraryEquip(le);
       }
 
       setLoaded(true);
@@ -209,7 +217,7 @@ export default function Home() {
 
   function renderTab() {
     switch (currentTab) {
-      case 'info':    return <QuoteInfoTab     {...sharedProps} />;
+      case 'info':    return <QuoteInfoTab     {...sharedProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} />;
       case 'fgs':     return <FinishedGoodsTab {...sharedProps} />;
       case 'bom':     return <BOMTab           {...sharedProps} />;
       case 'matcost': return <MaterialCostsTab {...sharedProps} />;
@@ -297,7 +305,7 @@ export default function Home() {
               (() => {
                 const viewProps = { state: appState, onUpdate: () => {}, resetKey };
                 switch (currentTab) {
-                  case 'info':    return <QuoteInfoTab     {...viewProps} />;
+                  case 'info':    return <QuoteInfoTab     {...viewProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} />;
                   case 'fgs':     return <FinishedGoodsTab {...viewProps} />;
                   case 'bom':     return <BOMTab           {...viewProps} />;
                   case 'matcost': return <MaterialCostsTab {...viewProps} />;
