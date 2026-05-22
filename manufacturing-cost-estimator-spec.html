@@ -129,6 +129,19 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td>Volume Breaks</td><td>Add/remove/reorder break columns here. Each break has a label, builds/year, and optional target total EAU.</td></tr>
 </table>
 
+<h4>Quote Review</h4>
+<p>A card displayed below the Quote Information and Cost Rate Settings cards on the Quote Info tab. It compares the current quote's material costs and equipment values against the org-wide library and surfaces discrepancies as actionable findings.</p>
+<table><tr><th>Indicator</th><th>Condition</th><th>Meaning</th></tr>
+<tr><td style="color:#dc2626;font-weight:700">● Red</td><td>Library price ≥ quote price at that volume</td><td>The quote may be underestimating cost — real market rate is at least as high as entered</td></tr>
+<tr><td style="color:#16a34a;font-weight:700">● Green</td><td>Library price &lt; quote price</td><td>The quote is conservative — library has a lower price available for this volume</td></tr>
+</table>
+<p>Each finding shows the part number or equipment name, break label and annual volume (for parts), the specific cost field (for equipment), the quote value, and the library value. Two update actions are available:</p>
+<ul>
+  <li><strong>← Use Library</strong> (per row): replaces that single finding's quote value with the library value. Undoable via the ↺ Undo button.</li>
+  <li><strong>← Update All from Library</strong> (card header): applies all findings at once. Undoable.</li>
+</ul>
+<p>Parts matching uses case-insensitive part number comparison. Equipment matching uses case-insensitive name comparison. The library price lookup finds the highest <em>min_qty</em> tier that does not exceed the annual purchasing quantity for that break.</p>
+
 <h3>3.2 Finished Goods</h3>
 <ul>
   <li>Each row is a finished good: name, description, and EAU per break column</li>
@@ -443,6 +456,7 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <tr><td>Cloud save / sync</td><td>✅ Live</td><td>Quotes stored in Supabase per user/department; accessible from any device; local storage is offline fallback; 1-second debounced auto-save</td></tr>
 <tr><td>Org / site / department hierarchy</td><td>✅ Live</td><td>Organizations contain sites; sites contain departments; quotes belong to departments; admin drawer to manage the full hierarchy</td></tr>
 <tr><td>Role-based access</td><td>✅ Live</td><td>Admin, Estimator, Viewer roles; admins can invite users via 7-day token links</td></tr>
+<tr><td>Parts &amp; equipment library</td><td>✅ Live</td><td>Org-wide library of parts (with tiered pricing by annual qty) and equipment. Auto-populated from saved quotes. Quote Review on the Quote Info tab surfaces price discrepancies with one-click "← Use Library" and "← Update All" actions.</td></tr>
 <tr><td>Cross-user quote sharing</td><td>🔜 Phase 5</td><td>Estimators see all quotes in their department (not just their own); org-wide quote visibility for admins</td></tr>
 <tr><td>Org switcher</td><td>🔜 Phase 5</td><td>Users who belong to multiple orgs can switch between them</td></tr>
 <tr><td>Stripe subscriptions</td><td>Planned</td><td>Free tier + paid plans; billing portal; seat-based pricing</td></tr>

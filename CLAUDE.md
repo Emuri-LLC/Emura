@@ -348,6 +348,9 @@ When generating `index.mjs`, use the **exact UI selectors** from the source. The
 | Admin drawer tabs | `button` with text `'Organization'`, `'Sites & Depts'`, `'Users'` |
 | Close drawer | `button` with text `'×'` inside `.drawer-panel` |
 | Org name input | `input` (no explicit type attribute — `input[type="text"]` won't match) |
+| Quote Review card | `.card-hdr` containing text `'Quote Review'` |
+| Update All button | `button` with text `'← Update All from Library'` (in Quote Review card header) |
+| Per-row Update button | `button` with text `'← Use Library'` (one per finding row) |
 | Save status | `#save-status` |
 | Quote Info inputs | `div.fgrp input[type="text"]` — no placeholder or id; first is Name, second Customer, fourth Revision |
 | Notes area | `div.notes-editable` (contenteditable div, not a textarea) |
@@ -439,3 +442,46 @@ Current fields and their guards:
 - `quote` — `if (!state.quote) state.quote = def.quote`
 
 If you add a new field to `AppState`, add its guard to this list.
+
+---
+
+## Parts & Equipment Library
+
+### Tables (run schema.sql block in Supabase SQL Editor to create)
+- `parts` — org-wide catalogue; unique on `(org_id, part_number)`
+- `part_prices` — tiered pricing keyed by `(part_id, min_qty)` where `min_qty` is annual purchasing qty
+- `equipment_library` — org-wide equipment; unique on `(org_id, name)`
+
+### Auto-sync (no manual data entry needed)
+Every debounced cloud save calls `syncPartsToLibrary` and `syncEquipmentToLibrary` (both in `lib/db.ts`).
+- Parts: upserts non-customer-supplied BOM items with a part number, then upserts each `CostEntry` from `materialCosts` as a price tier. Material costs must be entered on the Material Costs tab before prices appear.
+- Equipment: upserts all named equipment entries from the quote.
+After sync, `listLibraryParts` and `listLibraryEquipment` refresh the in-memory state so Quote Review updates immediately.
+
+### Stale closure gotcha
+`cloudSave` is a `useCallback` with `[]` deps. It captures `orgCtx = null` at mount time.
+`orgCtxRef` (a `useRef`) is kept in sync by the bootstrap `useEffect` and read inside `cloudSave`
+so the sync always has the live org ID. Do not replace with direct state access.
+
+### Quote Review (components/QuoteReview.tsx)
+Rendered at the bottom of the Quote Info tab. Calls `computeQuoteReview()` (pure function in
+`calculations.ts`) on every render — no extra fetch needed.
+
+Matching rules:
+- Parts: case-insensitive `partNumber` match; price lookup finds the highest `min_qty` tier ≤ annual purchasing qty
+- Equipment: case-insensitive `name` match; compares CapEx, Run Rate, Maintenance separately
+
+Direction:
+- **Red** — library value ≥ quote value (possible cost underestimate)
+- **Green** — library value < quote value (cost reduction or conservative quote)
+
+Update actions use `applyLibraryToQuote()` (pure function in `calculations.ts`) which returns
+a new `AppState` with the library values applied. Passed to `onUpdate` → goes through the normal
+undo history stack. Both per-row "← Use Library" and "← Update All from Library" are undoable.
+
+### RLS notes
+- `parts` and `part_prices`: readable by all org members; writable by admin + estimator
+- `equipment_library`: readable by all org members; writable by admin + estimator
+  (originally admin-only — was changed after RLS failure; make sure policy reflects `role in ('admin','estimator')`)
+- `part_prices` requires `unique (part_id, min_qty)` — must be added manually if table was created before the constraint was in the schema
+- `equipment_library` requires `unique (org_id, name)` — same

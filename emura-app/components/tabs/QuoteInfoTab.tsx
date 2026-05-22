@@ -170,6 +170,7 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
       state={state}
       libraryParts={libraryParts}
       libraryEquipment={libraryEquipment}
+      onUpdate={onUpdate}
     />
 
     </>

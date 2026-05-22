@@ -63,6 +63,12 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 4.4 | Export the quote, edit the JSON to set `quote.notes` to `<script>alert(1)</script>`, import it | No alert fires; notes field is empty or stripped | |
 | 4.5 | Add 3 volume breaks | All 3 appear in the Breaks section with editable labels and EAU fields | |
 | 4.6 | Delete a volume break | Break removed; Summary tab reflects the change | |
+| 4.7 | Open Quote Info tab on a quote that has BOM items with material costs entered | Quote Review card appears below the two info cards | |
+| 4.8 | Quote Review with no library data yet (fresh org) | "No library data yet" empty state shown; no crash | |
+| 4.9 | Save a quote with BOM items and material costs, then open another quote with the same part numbers at different prices | Quote Review shows red/green findings with correct quote vs. library values | |
+| 4.10 | Click **← Use Library** on a single finding | That line's quote value updates to the library value; Undo reverts it | |
+| 4.11 | Click **← Update All from Library** | All findings applied at once; header summary clears; Undo reverts all | |
+| 4.12 | After updating all, the Quote Review card shows | "✓ All library prices match the quote." | |
 
 ---
 
@@ -226,6 +232,21 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 
 ---
 
+## 17. Parts & Equipment Library
+
+Requires at least one saved quote with BOM items, material costs entered on the Material Costs tab, and equipment defined.
+
+| # | Action | Expected | Pass/Fail |
+|---|--------|----------|-----------|
+| 17.1 | Save a quote with a non-customer-supplied BOM item that has a part number | Part appears in Supabase `parts` table | |
+| 17.2 | Enter a cost on the Material Costs tab, save the quote | Corresponding row appears in `part_prices` with the correct `min_qty` (annual purchasing qty) and `unit_cost` | |
+| 17.3 | Define equipment on the Equipment tab, save the quote | Equipment row appears in `equipment_library` | |
+| 17.4 | Open a second quote with the same part number at a different cost | Quote Review shows a finding for that part | |
+| 17.5 | Open browser DevTools console after saving a quote | No `[library]` error messages | |
+| 17.6 | Save a quote with a customer-supplied BOM item | That item does **not** appear in `parts` table | |
+
+---
+
 ## Sign-off
 
 | Area | Pass | Fail | Notes |
@@ -233,7 +254,7 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 | Auth (8 tests) | | | |
 | Org Bootstrap (4) | | | |
 | Quotes List (9) | | | |
-| Quote Info (6) | | | |
+| Quote Info (12) | | | |
 | Finished Goods (5) | | | |
 | BOM (6) | | | |
 | Material Costs (4) | | | |
@@ -246,6 +267,7 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 | Invite Flow (9) | | | |
 | Admin Drawer (8) | | | |
 | Edge Cases (7) | | | |
+| Parts & Equipment Library (6) | | | |
 | **Total** | | | |
 
 **Deploy approved:** ☐ Yes  ☐ No — blocked on: ___________________________

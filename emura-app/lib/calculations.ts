@@ -212,6 +212,37 @@ export function computeQuoteReview(
   return items;
 }
 
+// Applies library values back to the quote for the given subset of ReviewItems.
+// Pass computeQuoteReview()'s full result to update everything, or a single-item
+// array to update one row. The returned state can be handed straight to onUpdate().
+export function applyLibraryToQuote(state: AppState, items: ReviewItem[]): AppState {
+  let next = state;
+
+  for (const item of items) {
+    if (item.kind === 'part' && item.annualQty != null) {
+      const bomItem = next.bom.find(
+        b => b.partNumber.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
+      );
+      if (!bomItem) continue;
+      const withCosts = { ...next, materialCosts: { ...next.materialCosts } };
+      setCost(withCosts, bomItem.id, item.annualQty, item.libraryValue);
+      next = withCosts;
+    } else if (item.kind === 'equipment') {
+      const idx = next.equipment.findIndex(
+        e => e.name.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
+      );
+      if (idx === -1) continue;
+      const eq = { ...next.equipment[idx] };
+      if (item.field === 'CapEx')       eq.capex              = item.libraryValue;
+      if (item.field === 'Run Rate')    eq.hourlyRunCost      = item.libraryValue;
+      if (item.field === 'Maintenance') eq.annualMaintenance  = item.libraryValue;
+      next = { ...next, equipment: next.equipment.map((e, i) => i === idx ? eq : e) };
+    }
+  }
+
+  return next;
+}
+
 export interface CostResult {
   mat: number;
   dl: number;
