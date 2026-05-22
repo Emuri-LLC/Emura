@@ -106,7 +106,10 @@ export default function Home() {
   async function handleNew() {
     if (!orgCtx?.departmentId) return;
     const fresh = defaultState();
-    setHistory(prev => [...prev.slice(-39), appState!]);
+    // Don't push null into history when creating from the list (appState is null there);
+    // that would make history.length===1 and enable undo with nothing to revert to.
+    if (appState !== null) setHistory(prev => [...prev.slice(-39), appState]);
+    else setHistory([]);
     const id = await createQuote(supabase, fresh, orgCtx.departmentId);
     if (!id) return;
     setQuoteId(id);
