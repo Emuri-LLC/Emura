@@ -137,6 +137,54 @@ export async function deleteQuote(supabase: SupabaseClient, id: string): Promise
 
 // ── Parts & Equipment Library ─────────────────────────────────
 
+// Upserts all non-customer-supplied BOM items (and their cost entries) from a
+// saved quote into the org parts library. Called on every cloud save so the
+// library stays current without any manual management step.
+export async function syncPartsToLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  state: AppState,
+): Promise<void> {
+  const costable = state.bom.filter(
+    item => !item.customerSupplied && item.partNumber.trim(),
+  );
+  if (!costable.length) return;
+
+  for (const item of costable) {
+    const { data: partRow } = await supabase
+      .from('parts')
+      .upsert(
+        {
+          org_id:      orgId,
+          part_number: item.partNumber.trim(),
+          description: item.description || '',
+          uom:         item.uom || 'EA',
+          updated_at:  new Date().toISOString(),
+        },
+        { onConflict: 'org_id,part_number' },
+      )
+      .select('id')
+      .single();
+
+    if (!partRow) continue;
+
+    const entries = state.materialCosts[item.id] ?? [];
+    if (!entries.length) continue;
+
+    await supabase
+      .from('part_prices')
+      .upsert(
+        entries.map(e => ({
+          part_id:    partRow.id,
+          min_qty:    Math.round(e.annualQty),
+          unit_cost:  e.cost,
+          updated_at: new Date().toISOString(),
+        })),
+        { onConflict: 'part_id,min_qty' },
+      );
+  }
+}
+
 export async function listLibraryParts(supabase: SupabaseClient): Promise<LibraryPart[]> {
   const { data, error } = await supabase
     .from('parts')

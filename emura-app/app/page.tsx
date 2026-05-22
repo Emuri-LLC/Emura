@@ -5,7 +5,7 @@ import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState, LibraryPart, LibraryEquipment } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, listLibraryParts, listLibraryEquipment } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, syncPartsToLibrary, listLibraryParts, listLibraryEquipment } from '@/lib/db';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -87,6 +87,11 @@ export default function Home() {
           ? { ...q, name: state.quote.name || 'New Quote', customer: state.quote.customer || '', updatedAt: new Date().toISOString() }
           : q
       ));
+      if (orgCtx) {
+        await syncPartsToLibrary(supabase, orgCtx.orgId, state);
+        const lp = await listLibraryParts(supabase);
+        setLibraryParts(lp);
+      }
       setSaveStatus('Saved');
     }, 1000);
   // eslint-disable-next-line react-hooks/exhaustive-deps

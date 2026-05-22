@@ -215,7 +215,8 @@ create table part_prices (
   min_qty    integer not null default 0,
   unit_cost  numeric not null,
   source     text not null default '',
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  unique (part_id, min_qty)
 );
 
 -- Org-wide equipment reference. site_id = null means all sites.
