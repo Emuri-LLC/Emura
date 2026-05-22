@@ -151,7 +151,7 @@ export async function syncPartsToLibrary(
   if (!costable.length) return;
 
   for (const item of costable) {
-    const { data: partRow } = await supabase
+    const { data: partRow, error: partErr } = await supabase
       .from('parts')
       .upsert(
         {
@@ -166,12 +166,13 @@ export async function syncPartsToLibrary(
       .select('id')
       .single();
 
+    if (partErr) { console.error('[library] part upsert failed:', partErr.message); continue; }
     if (!partRow) continue;
 
-    const entries = state.materialCosts[item.id] ?? [];
+    const entries = (state.materialCosts[item.id] ?? []).filter(e => e.annualQty > 0 && e.cost > 0);
     if (!entries.length) continue;
 
-    await supabase
+    const { error: priceErr } = await supabase
       .from('part_prices')
       .upsert(
         entries.map(e => ({
@@ -182,7 +183,37 @@ export async function syncPartsToLibrary(
         })),
         { onConflict: 'part_id,min_qty' },
       );
+
+    if (priceErr) console.error('[library] part_prices upsert failed:', priceErr.message);
   }
+}
+
+// Upserts equipment from a quote into the org equipment library.
+export async function syncEquipmentToLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  state: AppState,
+): Promise<void> {
+  if (!state.equipment.length) return;
+
+  const rows = state.equipment
+    .filter(eq => eq.name.trim())
+    .map(eq => ({
+      org_id:             orgId,
+      name:               eq.name.trim(),
+      capex:              eq.capex,
+      hourly_run_cost:    eq.hourlyRunCost,
+      annual_maintenance: eq.annualMaintenance,
+      updated_at:         new Date().toISOString(),
+    }));
+
+  if (!rows.length) return;
+
+  const { error } = await supabase
+    .from('equipment_library')
+    .upsert(rows, { onConflict: 'org_id,name' });
+
+  if (error) console.error('[library] equipment upsert failed:', error.message);
 }
 
 export async function listLibraryParts(supabase: SupabaseClient): Promise<LibraryPart[]> {

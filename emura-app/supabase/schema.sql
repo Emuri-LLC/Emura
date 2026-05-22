@@ -230,7 +230,8 @@ create table if not exists equipment_library (
   annual_maintenance numeric not null default 0,
   notes              text not null default '',
   created_at         timestamptz default now(),
-  updated_at         timestamptz default now()
+  updated_at         timestamptz default now(),
+  unique (org_id, name)
 );
 
 alter table parts             enable row level security;

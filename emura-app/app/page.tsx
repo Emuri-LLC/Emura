@@ -5,7 +5,7 @@ import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState, LibraryPart, LibraryEquipment } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, syncPartsToLibrary, listLibraryParts, listLibraryEquipment } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, syncPartsToLibrary, syncEquipmentToLibrary, listLibraryParts, listLibraryEquipment } from '@/lib/db';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -92,9 +92,16 @@ export default function Home() {
       ));
       const ctx = orgCtxRef.current;
       if (ctx) {
-        await syncPartsToLibrary(supabase, ctx.orgId, state);
-        const lp = await listLibraryParts(supabase);
+        await Promise.all([
+          syncPartsToLibrary(supabase, ctx.orgId, state),
+          syncEquipmentToLibrary(supabase, ctx.orgId, state),
+        ]);
+        const [lp, le] = await Promise.all([
+          listLibraryParts(supabase),
+          listLibraryEquipment(supabase),
+        ]);
         setLibraryParts(lp);
+        setLibraryEquip(le);
       }
       setSaveStatus('Saved');
     }, 1000);
