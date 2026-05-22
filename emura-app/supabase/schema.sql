@@ -269,7 +269,7 @@ do $$ begin
   end if;
   if not exists (select 1 from pg_policies where tablename='equipment_library' and policyname='eqlib_write') then
     create policy "eqlib_write" on equipment_library for all
-      using (exists (select 1 from org_members where org_id = equipment_library.org_id and user_id = auth.uid() and role = 'admin'));
+      using (exists (select 1 from org_members where org_id = equipment_library.org_id and user_id = auth.uid() and role in ('admin','estimator')));
   end if;
 end $$;
 
