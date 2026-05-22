@@ -44,7 +44,9 @@ export default function Home() {
   const [libraryEquipment, setLibraryEquip] = useState<LibraryEquipment[]>([]);
 
   // Debounce timer for cloud saves
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref so cloudSave (useCallback with [] deps) always sees current orgCtx
+  const orgCtxRef  = useRef<OrgContext | null>(null);
 
   const supabase = createClient();
 
@@ -57,6 +59,7 @@ export default function Home() {
 
       const ctx = await getMyOrgContext(supabase);
       setOrgCtx(ctx);
+      orgCtxRef.current = ctx;
 
       if (ctx) {
         const [qs, lp, le] = await Promise.all([
@@ -87,8 +90,9 @@ export default function Home() {
           ? { ...q, name: state.quote.name || 'New Quote', customer: state.quote.customer || '', updatedAt: new Date().toISOString() }
           : q
       ));
-      if (orgCtx) {
-        await syncPartsToLibrary(supabase, orgCtx.orgId, state);
+      const ctx = orgCtxRef.current;
+      if (ctx) {
+        await syncPartsToLibrary(supabase, ctx.orgId, state);
         const lp = await listLibraryParts(supabase);
         setLibraryParts(lp);
       }
