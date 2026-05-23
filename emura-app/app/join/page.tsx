@@ -10,6 +10,13 @@ function JoinContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    const token = searchParams.get('token');
+    router.push(token ? `/login?token=${token}` : '/login');
+  }
+
   useEffect(() => {
     async function run() {
       const token = searchParams.get('token');
@@ -73,14 +80,26 @@ function JoinContent() {
             <p style={{ color: '#991b1b', fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
               Invite failed
             </p>
-            <p style={{ color: '#555', fontSize: 12, marginBottom: 16 }}>{message}</p>
-            <button
-              onClick={() => router.push('/')}
-              style={{ padding: '8px 20px', background: '#1a2940', color: '#fff',
-                border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
-            >
-              Go to App
-            </button>
+            <p style={{ color: '#555', fontSize: 12, marginBottom: 8 }}>{message}</p>
+            <p style={{ color: '#888', fontSize: 11, marginBottom: 16, lineHeight: 1.5 }}>
+              Make sure you're signed in with the exact email address this invite was sent to. If you're signed in as someone else, sign out first.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button
+                onClick={handleSignOut}
+                style={{ padding: '8px 16px', background: '#fff', color: '#1a2940',
+                  border: '1px solid #1a2940', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
+              >
+                Sign Out
+              </button>
+              <button
+                onClick={() => router.push('/')}
+                style={{ padding: '8px 16px', background: '#1a2940', color: '#fff',
+                  border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
+              >
+                Go to App
+              </button>
+            </div>
           </div>
         )}
       </div>

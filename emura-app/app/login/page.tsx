@@ -34,11 +34,14 @@ function LoginContent() {
       router.push(token ? `/join?token=${token}` : '/');
     } else {
       if (!company.trim()) { setError('Company name is required.'); setLoading(false); return; }
+      const inviteToken = searchParams.get('token');
       const { error } = await supabase.auth.signUp({
         email, password,
         options: {
           data: { company_name: company.trim() },
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: inviteToken
+            ? `${window.location.origin}/join?token=${inviteToken}`
+            : window.location.origin,
         },
       });
       setLoading(false);

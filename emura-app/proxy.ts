@@ -35,7 +35,8 @@ export async function proxy(request: NextRequest) {
 
   if (user && isLoginPage) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    const token = request.nextUrl.searchParams.get('token');
+    url.pathname = token ? '/join' : '/';
     return NextResponse.redirect(url);
   }
 
