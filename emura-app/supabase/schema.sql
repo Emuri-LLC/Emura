@@ -277,18 +277,31 @@ end $$;
 
 -- Trigger: fires on every new auth.users insert.
 -- Reads company_name from user metadata set during signUp().
--- Only creates an org if the user isn't already joining via an invite (handled separately).
+-- Skips org creation when an active invite exists for that email — the
+-- accept_org_invite RPC will add them to the invited org instead.
 create or replace function handle_new_user()
 returns trigger language plpgsql security definer
 set search_path = public
 set row_security = off
 as $$
 declare
-  v_company text;
-  v_org     uuid;
-  v_site    uuid;
-  v_dept    uuid;
+  v_company    text;
+  v_org        uuid;
+  v_site       uuid;
+  v_dept       uuid;
+  v_has_invite boolean;
 begin
+  select exists(
+    select 1 from public.org_invites
+    where lower(email) = lower(new.email)
+      and accepted_at is null
+      and expires_at > now()
+  ) into v_has_invite;
+
+  if v_has_invite then
+    return new;
+  end if;
+
   v_company := coalesce(
     new.raw_user_meta_data->>'company_name',
     split_part(new.email, '@', 1)
@@ -311,11 +324,18 @@ create trigger on_auth_user_created
 -- Accept an invite token: inserts org_members row and marks invite accepted.
 -- Rejects if the authenticated user's email does not match the invite email,
 -- preventing account hijacking via stolen invite links.
+-- Uses auth.users lookup (more reliable than auth.jwt()->> in some PKCE flows).
 create or replace function accept_org_invite(invite_token text)
-returns void language plpgsql security definer as $$
+returns void language plpgsql security definer
+set search_path = public
+set row_security = off
+as $$
 declare
   v_invite org_invites;
+  v_email  text;
 begin
+  select email into v_email from auth.users where id = auth.uid();
+
   select * into v_invite from org_invites
   where token = invite_token
     and accepted_at is null
@@ -323,7 +343,7 @@ begin
   if not found then
     raise exception 'Invalid or expired invite token';
   end if;
-  if lower(v_invite.email) <> lower(auth.jwt()->>'email') then
+  if v_email is null or lower(v_invite.email) <> lower(v_email) then
     raise exception 'Invalid or expired invite token';
   end if;
   insert into org_members (org_id, user_id, role, department_id)
