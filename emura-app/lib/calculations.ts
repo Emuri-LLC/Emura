@@ -337,36 +337,55 @@ export function setCost(state: AppState, rmId: string, aq: number, cost: number)
 
 // ── Equipment cost ────────────────────────────────────────────
 
-export function calcEquipCost(state: AppState, op: DirectOp, bki: number): number {
-  const { capexYears, workingHoursPerYear } = state.settings;
-  const wkHrs = n(workingHoursPerYear) || 1;
-  const cyrs = n(capexYears) || 1;
-  const tau = totalAnnualUnits(state, bki);
-  const bpy = n((state.breaks[bki] || {}).buildsPerYear);
-  const nFGs = state.finishedGoods.length;
+// Sum of each operation's utilization contribution per equipment ID across all direct ops.
+function buildEquipUtilMap(state: AppState, bki: number): Map<string, number> {
+  const wkHrs = n(state.settings.workingHoursPerYear) || 1;
+  const tau   = totalAnnualUnits(state, bki);
+  const bpy   = n((state.breaks[bki] || {}).buildsPerYear);
+  const nFGs  = state.finishedGoods.length;
+  const utilMap = new Map<string, number>();
+  for (const op of state.directOps) {
+    const ct = n(op.cycleTimeSec) / 3600;
+    const os = n(op.orderSetupMin) / 60;
+    const ls = n(op.lineSetupMin) / 60;
+    const opUtil = (ct * tau + os * bpy + ls * bpy * nFGs) / wkHrs;
+    for (const eqId of op.equipmentIds || []) {
+      utilMap.set(eqId, (utilMap.get(eqId) ?? 0) + opUtil);
+    }
+  }
+  return utilMap;
+}
+
+// Capex + maintenance cost for all equipment, charged once per equipment per break.
+// Project-specific: full capex/tau (dedicated; no capexYears amortization).
+// Non-project-specific: amortized capex × utilization / tau.
+export function calcEquipCapexCosts(state: AppState, bki: number): number {
+  const cyrs = n(state.settings.capexYears) || 1;
+  const tau  = totalAnnualUnits(state, bki);
+  if (tau <= 0) return 0;
+  let cost = 0;
+  for (const [eqId, util] of buildEquipUtilMap(state, bki)) {
+    const eq = state.equipment.find(e => e.id === eqId);
+    if (!eq) continue;
+    if (eq.projectSpecific) {
+      cost += n(eq.capex) / tau;
+      cost += n(eq.annualMaintenance) / tau;
+    } else {
+      cost += (n(eq.capex) / cyrs) * util / tau;
+      cost += n(eq.annualMaintenance) * util / tau;
+    }
+  }
+  return cost;
+}
+
+// Run cost only (hourlyRunCost × cycleTime) for a single operation.
+// Capex and maintenance are handled once per equipment via calcEquipCapexCosts.
+export function calcEquipCost(state: AppState, op: DirectOp, _bki: number): number {
   const ct = n(op.cycleTimeSec) / 3600;
-  const os = n(op.orderSetupMin) / 60;
-  const ls = n(op.lineSetupMin) / 60;
-
-  // Hours occupied per year: run + order setup + all line setups
-  const occHrs = ct * tau + os * bpy + ls * bpy * nFGs;
-  const util = occHrs / wkHrs;
-
   let cost = 0;
   for (const eqId of op.equipmentIds || []) {
     const eq = state.equipment.find(e => e.id === eqId);
     if (!eq) continue;
-    if (eq.projectSpecific) {
-      if (tau > 0) {
-        cost += n(eq.capex) / tau;
-        cost += n(eq.annualMaintenance) / tau;
-      }
-    } else {
-      if (tau > 0) {
-        cost += (n(eq.capex) / cyrs) * util / tau;
-        cost += n(eq.annualMaintenance) * util / tau;
-      }
-    }
     cost += n(eq.hourlyRunCost) * ct;
   }
   return cost;
@@ -413,6 +432,7 @@ export function calcCosts(
     if (toq > 0) dlOrder += os * shopRate * ops / toq;
     dlEquip += calcEquipCost(state, op, bki);
   }
+  dlEquip += calcEquipCapexCosts(state, bki);
 
   // Indirect labor
   let ilRun = 0, ilLine = 0, ilOrder = 0;
