@@ -10,13 +10,14 @@ import { uid } from '@/lib/state';
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
+  resetKey?: number;
 }
 
 function fmtN(n: number, d = 0) {
   return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
-export default function OperationsTab({ state, onUpdate }: Props) {
+export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) {
   const dlSort  = useDragSort(state.directOps,   ops  => onUpdate({ ...state, directOps: ops }));
   const subSort = useDragSort(state.subcontracts, subs => onUpdate({ ...state, subcontracts: subs }));
   const ilSort  = useDragSort(state.indirectOps,  ops  => onUpdate({ ...state, indirectOps: ops }));
@@ -117,7 +118,7 @@ export default function OperationsTab({ state, onUpdate }: Props) {
                     <tr key={op.id} {...dlSort.dragProps(i)} className={dlSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
                       <td className="op-name"><input type="text" value={op.name ?? ''} onChange={e => setDL(i, { name: e.target.value })} /></td>
-                      <td><input type="number" min={0.1} step="any" style={{ maxWidth: 50 }} value={op.operators ?? 1} onChange={e => setDL(i, { operators: parseFloat(e.target.value) || 1 })} /></td>
+                      <td><input type="number" min={0.1} step="any" style={{ maxWidth: 50 }} key={op.id + '-ops-' + resetKey} defaultValue={op.operators ?? 1} onBlur={e => setDL(i, { operators: parseFloat(e.target.value) || 1 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.cycleTimeSec || ''} onChange={e => setDL(i, { cycleTimeSec: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.orderSetupMin || ''} onChange={e => setDL(i, { orderSetupMin: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.lineSetupMin || ''} onChange={e => setDL(i, { lineSetupMin: parseFloat(e.target.value) || 0 })} /></td>
