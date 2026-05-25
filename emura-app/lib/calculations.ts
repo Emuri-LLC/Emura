@@ -356,14 +356,12 @@ function buildEquipUtilMap(state: AppState, bki: number): Map<string, number> {
   return utilMap;
 }
 
-// All costs for all equipment, charged once per equipment per break.
-// Project-specific (100% util): capex/tau + maintenance/tau + hourlyRunCost×wkHrs/tau — fully
-//   independent of which or how many operations the equipment is assigned to.
+// Capex + maintenance for all equipment, charged once per equipment per break.
+// Project-specific: capex/tau + maintenance/tau (dedicated; no capexYears amortization).
 // Non-project-specific: amortized capex × util / tau + maintenance × util / tau.
 export function calcEquipCapexCosts(state: AppState, bki: number): number {
-  const cyrs  = n(state.settings.capexYears) || 1;
-  const wkHrs = n(state.settings.workingHoursPerYear) || 1;
-  const tau   = totalAnnualUnits(state, bki);
+  const cyrs = n(state.settings.capexYears) || 1;
+  const tau  = totalAnnualUnits(state, bki);
   if (tau <= 0) return 0;
   let cost = 0;
   for (const [eqId, util] of buildEquipUtilMap(state, bki)) {
@@ -372,7 +370,6 @@ export function calcEquipCapexCosts(state: AppState, bki: number): number {
     if (eq.projectSpecific) {
       cost += n(eq.capex) / tau;
       cost += n(eq.annualMaintenance) / tau;
-      cost += n(eq.hourlyRunCost) * wkHrs / tau;
     } else {
       cost += (n(eq.capex) / cyrs) * util / tau;
       cost += n(eq.annualMaintenance) * util / tau;
@@ -381,14 +378,14 @@ export function calcEquipCapexCosts(state: AppState, bki: number): number {
   return cost;
 }
 
-// Run cost (hourlyRunCost × cycleTime) for non-project-specific equipment only.
-// Project-specific equipment run cost is handled in calcEquipCapexCosts at 100% utilization.
+// Run cost (hourlyRunCost × cycleTime) per operation for all equipment.
+// hourlyRunCost reflects active machine time only — varies correctly by assigned operations.
 export function calcEquipCost(state: AppState, op: DirectOp, _bki: number): number {
   const ct = n(op.cycleTimeSec) / 3600;
   let cost = 0;
   for (const eqId of op.equipmentIds || []) {
     const eq = state.equipment.find(e => e.id === eqId);
-    if (!eq || eq.projectSpecific) continue;
+    if (!eq) continue;
     cost += n(eq.hourlyRunCost) * ct;
   }
   return cost;
