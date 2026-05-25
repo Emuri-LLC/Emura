@@ -1,2 +1,4 @@
 .DS_Store
 .ds_store
+.mcp.json
+.claude/current-wrike-task.json

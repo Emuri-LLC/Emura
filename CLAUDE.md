@@ -485,3 +485,22 @@ undo history stack. Both per-row "← Use Library" and "← Update All from Libr
   (originally admin-only — was changed after RLS failure; make sure policy reflects `role in ('admin','estimator')`)
 - `part_prices` requires `unique (part_id, min_qty)` — must be added manually if table was created before the constraint was in the schema
 - `equipment_library` requires `unique (org_id, name)` — same
+
+---
+
+## Wrike Task Tracking
+
+When you identify the Wrike task you are about to implement, immediately write the state file **before making any code changes or commits**:
+
+```bash
+python3 -c "import json; open('/Users/eohano/Emuri/Emura/.claude/current-wrike-task.json','w').write(json.dumps({'taskId':'<ID>','numericId':<numericId>,'title':'<title>'}))"
+```
+
+Replace `<ID>` with the string task ID from `wrike_get_tasks` (e.g. `"MAAAAAEKEaHj"`), `<numericId>` with the integer ID, and `<title>` with the task title.
+
+A PostToolUse hook (`/.claude/hooks/wrike-git-hook.py`) reads this file on every git commit and push and automatically:
+- Posts a comment to the Wrike task via the REST API (with commit hash/message or push ref)
+- Updates the task due date to today
+- On git push: changes task status to **Review**
+
+If the file is absent or `taskId` is empty, the hook exits silently. Overwrite the file when switching to a new task.
