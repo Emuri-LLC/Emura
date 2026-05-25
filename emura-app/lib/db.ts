@@ -138,11 +138,12 @@ export async function deleteQuote(supabase: SupabaseClient, id: string): Promise
 // ── Parts & Equipment Library ─────────────────────────────────
 
 // Upserts all non-customer-supplied BOM items (and their cost entries) from a
-// saved quote into the org parts library. Called on every cloud save so the
-// library stays current without any manual management step.
+// saved quote into the org parts library. Skips items already used in another
+// quote (they are "locked" to prevent accidental overwrites).
 export async function syncPartsToLibrary(
   supabase: SupabaseClient,
   orgId: string,
+  quoteId: string,
   state: AppState,
 ): Promise<void> {
   const costable = state.bom.filter(
@@ -151,15 +152,33 @@ export async function syncPartsToLibrary(
   if (!costable.length) return;
 
   for (const item of costable) {
+    const pn = item.partNumber.trim();
+
+    const { data: existing } = await supabase
+      .from('parts')
+      .select('id, source_quote_id, locked')
+      .eq('org_id', orgId)
+      .eq('part_number', pn)
+      .maybeSingle();
+
+    if (existing?.locked) continue;
+
+    if (existing?.source_quote_id && existing.source_quote_id !== quoteId) {
+      await supabase.from('parts').update({ locked: true }).eq('id', existing.id);
+      continue;
+    }
+
     const { data: partRow, error: partErr } = await supabase
       .from('parts')
       .upsert(
         {
-          org_id:      orgId,
-          part_number: item.partNumber.trim(),
-          description: item.description || '',
-          uom:         item.uom || 'EA',
-          updated_at:  new Date().toISOString(),
+          org_id:          orgId,
+          part_number:     pn,
+          description:     item.description || '',
+          uom:             item.uom || 'EA',
+          source_quote_id: quoteId,
+          locked:          false,
+          updated_at:      new Date().toISOString(),
         },
         { onConflict: 'org_id,part_number' },
       )
@@ -188,38 +207,129 @@ export async function syncPartsToLibrary(
   }
 }
 
-// Upserts equipment from a quote into the org equipment library.
+// Upserts equipment from a quote into the org equipment library. Skips
+// equipment already used in another quote (locked).
 export async function syncEquipmentToLibrary(
   supabase: SupabaseClient,
   orgId: string,
+  quoteId: string,
   state: AppState,
 ): Promise<void> {
-  if (!state.equipment.length) return;
+  const named = state.equipment.filter(eq => eq.name.trim());
+  if (!named.length) return;
 
-  const rows = state.equipment
-    .filter(eq => eq.name.trim())
-    .map(eq => ({
-      org_id:             orgId,
-      name:               eq.name.trim(),
-      capex:              eq.capex,
-      hourly_run_cost:    eq.hourlyRunCost,
-      annual_maintenance: eq.annualMaintenance,
-      updated_at:         new Date().toISOString(),
-    }));
+  for (const eq of named) {
+    const name = eq.name.trim();
 
-  if (!rows.length) return;
+    const { data: existing } = await supabase
+      .from('equipment_library')
+      .select('id, source_quote_id, locked')
+      .eq('org_id', orgId)
+      .eq('name', name)
+      .maybeSingle();
 
+    if (existing?.locked) continue;
+
+    if (existing?.source_quote_id && existing.source_quote_id !== quoteId) {
+      await supabase.from('equipment_library').update({ locked: true }).eq('id', existing.id);
+      continue;
+    }
+
+    const { error } = await supabase
+      .from('equipment_library')
+      .upsert(
+        {
+          org_id:             orgId,
+          name,
+          capex:              eq.capex,
+          hourly_run_cost:    eq.hourlyRunCost,
+          annual_maintenance: eq.annualMaintenance,
+          source_quote_id:    quoteId,
+          locked:             false,
+          updated_at:         new Date().toISOString(),
+        },
+        { onConflict: 'org_id,name' },
+      );
+
+    if (error) console.error('[library] equipment upsert failed:', error.message);
+  }
+}
+
+// Force-pushes a single part (and its price tiers) from a quote to the library,
+// bypassing the lock. Used by the "→ Update Library" button in Quote Review.
+export async function pushPartToLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  partNumber: string,
+  description: string,
+  uom: string,
+  entries: { annualQty: number; cost: number }[],
+): Promise<void> {
+  const { data: partRow, error } = await supabase
+    .from('parts')
+    .upsert(
+      {
+        org_id:      orgId,
+        part_number: partNumber.trim(),
+        description: description || '',
+        uom:         uom || 'EA',
+        updated_at:  new Date().toISOString(),
+      },
+      { onConflict: 'org_id,part_number' },
+    )
+    .select('id')
+    .single();
+
+  if (error || !partRow) { console.error('[library] pushPart failed:', error?.message); return; }
+
+  const valid = entries.filter(e => e.annualQty > 0 && e.cost > 0);
+  if (!valid.length) return;
+
+  const { error: priceErr } = await supabase
+    .from('part_prices')
+    .upsert(
+      valid.map(e => ({
+        part_id:    partRow.id,
+        min_qty:    Math.round(e.annualQty),
+        unit_cost:  e.cost,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'part_id,min_qty' },
+    );
+
+  if (priceErr) console.error('[library] pushPart prices failed:', priceErr.message);
+}
+
+// Force-pushes a single equipment entry to the library, bypassing the lock.
+export async function pushEquipmentToLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  name: string,
+  capex: number,
+  hourlyRunCost: number,
+  annualMaintenance: number,
+): Promise<void> {
   const { error } = await supabase
     .from('equipment_library')
-    .upsert(rows, { onConflict: 'org_id,name' });
+    .upsert(
+      {
+        org_id:             orgId,
+        name:               name.trim(),
+        capex,
+        hourly_run_cost:    hourlyRunCost,
+        annual_maintenance: annualMaintenance,
+        updated_at:         new Date().toISOString(),
+      },
+      { onConflict: 'org_id,name' },
+    );
 
-  if (error) console.error('[library] equipment upsert failed:', error.message);
+  if (error) console.error('[library] pushEquipment failed:', error.message);
 }
 
 export async function listLibraryParts(supabase: SupabaseClient): Promise<LibraryPart[]> {
   const { data, error } = await supabase
     .from('parts')
-    .select('id, part_number, description, uom, part_prices(min_qty, unit_cost, source)')
+    .select('id, part_number, description, uom, locked, part_prices(min_qty, unit_cost, source)')
     .order('part_number');
 
   if (error || !data) return [];
@@ -229,6 +339,7 @@ export async function listLibraryParts(supabase: SupabaseClient): Promise<Librar
     partNumber:  r.part_number,
     description: r.description,
     uom:         r.uom,
+    locked:      r.locked ?? false,
     prices: ((r.part_prices as { min_qty: number; unit_cost: number; source: string }[]) ?? [])
       .map(p => ({ minQty: p.min_qty, unitCost: p.unit_cost, source: p.source }))
       .sort((a, b) => a.minQty - b.minQty),
@@ -238,7 +349,7 @@ export async function listLibraryParts(supabase: SupabaseClient): Promise<Librar
 export async function listLibraryEquipment(supabase: SupabaseClient): Promise<LibraryEquipment[]> {
   const { data, error } = await supabase
     .from('equipment_library')
-    .select('id, name, capex, hourly_run_cost, annual_maintenance')
+    .select('id, name, capex, hourly_run_cost, annual_maintenance, locked')
     .order('name');
 
   if (error || !data) return [];
@@ -249,6 +360,7 @@ export async function listLibraryEquipment(supabase: SupabaseClient): Promise<Li
     capex:             r.capex,
     hourlyRunCost:     r.hourly_run_cost,
     annualMaintenance: r.annual_maintenance,
+    locked:            r.locked ?? false,
   }));
 }
 

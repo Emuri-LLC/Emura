@@ -195,17 +195,23 @@ create policy "quotes_delete" on quotes for delete
 -- ── Parts & Equipment Library (Phase 5) ──────────────────────
 
 create table if not exists parts (
-  id          uuid primary key default gen_random_uuid(),
-  org_id      uuid references organizations on delete cascade not null,
-  part_number text not null,
-  description text not null default '',
-  uom         text not null default 'EA',
-  notes       text not null default '',
-  created_by  uuid references auth.users on delete set null,
-  created_at  timestamptz default now(),
-  updated_at  timestamptz default now(),
+  id               uuid primary key default gen_random_uuid(),
+  org_id           uuid references organizations on delete cascade not null,
+  part_number      text not null,
+  description      text not null default '',
+  uom              text not null default 'EA',
+  notes            text not null default '',
+  source_quote_id  uuid references public.quotes(id) on delete set null,
+  locked           boolean not null default false,
+  created_by       uuid references auth.users on delete set null,
+  created_at       timestamptz default now(),
+  updated_at       timestamptz default now(),
   unique (org_id, part_number)
 );
+
+-- Migrate existing parts table if columns are missing
+alter table public.parts add column if not exists source_quote_id uuid references public.quotes(id) on delete set null;
+alter table public.parts add column if not exists locked boolean not null default false;
 
 -- Tiered pricing: one row per part × annual-quantity threshold.
 -- min_qty is the annual purchasing quantity at or above which this price applies.
@@ -229,10 +235,16 @@ create table if not exists equipment_library (
   hourly_run_cost    numeric not null default 0,
   annual_maintenance numeric not null default 0,
   notes              text not null default '',
+  source_quote_id    uuid references public.quotes(id) on delete set null,
+  locked             boolean not null default false,
   created_at         timestamptz default now(),
   updated_at         timestamptz default now(),
   unique (org_id, name)
 );
+
+-- Migrate existing equipment_library table if columns are missing
+alter table public.equipment_library add column if not exists source_quote_id uuid references public.quotes(id) on delete set null;
+alter table public.equipment_library add column if not exists locked boolean not null default false;
 
 alter table parts             enable row level security;
 alter table part_prices       enable row level security;

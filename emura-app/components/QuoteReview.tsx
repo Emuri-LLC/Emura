@@ -8,6 +8,7 @@ interface Props {
   libraryParts: LibraryPart[];
   libraryEquipment: LibraryEquipment[];
   onUpdate: (state: AppState) => void;
+  onPushToLibrary: (item: ReviewItem) => void;
 }
 
 function fmt(n: number) {
@@ -20,7 +21,7 @@ function fmtValue(item: ReviewItem): [string, string] {
   return [fmt(item.quoteValue), fmt(item.libraryValue)];
 }
 
-function ReviewRow({ item, onApply }: { item: ReviewItem; onApply: () => void }) {
+function ReviewRow({ item, onApply, onPush }: { item: ReviewItem; onApply: () => void; onPush: () => void }) {
   const isRed    = item.direction === 'red';
   const [qv, lv] = fmtValue(item);
 
@@ -43,6 +44,9 @@ function ReviewRow({ item, onApply }: { item: ReviewItem; onApply: () => void })
       }} />
       <div style={{ flex: 1 }}>
         <span style={{ fontWeight: 600, color: '#1a2940' }}>{label}</span>
+        {item.locked && (
+          <span style={{ color: '#888', marginLeft: 6, fontSize: 10, fontStyle: 'italic' }}>🔒 shared</span>
+        )}
         <span style={{ color: '#555', marginLeft: 8 }}>
           Quote {qv} → Library {lv}
         </span>
@@ -58,11 +62,21 @@ function ReviewRow({ item, onApply }: { item: ReviewItem; onApply: () => void })
       >
         ← Use Library
       </button>
+      {item.locked && (
+        <button
+          className="btn btn-neu btn-sm"
+          onClick={onPush}
+          title="Update library with this quote's current value"
+          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          → Update Library
+        </button>
+      )}
     </div>
   );
 }
 
-export default function QuoteReview({ state, libraryParts, libraryEquipment, onUpdate }: Props) {
+export default function QuoteReview({ state, libraryParts, libraryEquipment, onUpdate, onPushToLibrary }: Props) {
   const noLibrary = libraryParts.length === 0 && libraryEquipment.length === 0;
 
   if (noLibrary) {
@@ -130,7 +144,7 @@ export default function QuoteReview({ state, libraryParts, libraryEquipment, onU
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>
                   Potential underestimates — library ≥ quote
                 </div>
-                {reds.map((item, i) => <ReviewRow key={i} item={item} onApply={() => applyOne(item)} />)}
+                {reds.map((item, i) => <ReviewRow key={i} item={item} onApply={() => applyOne(item)} onPush={() => onPushToLibrary(item)} />)}
               </div>
             )}
             {greens.length > 0 && (
@@ -138,7 +152,7 @@ export default function QuoteReview({ state, libraryParts, libraryEquipment, onU
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>
                   Cost reduction opportunities — library &lt; quote
                 </div>
-                {greens.map((item, i) => <ReviewRow key={i} item={item} onApply={() => applyOne(item)} />)}
+                {greens.map((item, i) => <ReviewRow key={i} item={item} onApply={() => applyOne(item)} onPush={() => onPushToLibrary(item)} />)}
               </div>
             )}
           </div>

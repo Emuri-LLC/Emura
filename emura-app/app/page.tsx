@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
-import type { AppState, LibraryPart, LibraryEquipment } from '@/lib/calculations';
+import type { AppState, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, syncPartsToLibrary, syncEquipmentToLibrary, listLibraryParts, listLibraryEquipment } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, syncPartsToLibrary, syncEquipmentToLibrary, listLibraryParts, listLibraryEquipment, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -93,8 +93,8 @@ export default function Home() {
       const ctx = orgCtxRef.current;
       if (ctx) {
         await Promise.all([
-          syncPartsToLibrary(supabase, ctx.orgId, state),
-          syncEquipmentToLibrary(supabase, ctx.orgId, state),
+          syncPartsToLibrary(supabase, ctx.orgId, id, state),
+          syncEquipmentToLibrary(supabase, ctx.orgId, id, state),
         ]);
         const [lp, le] = await Promise.all([
           listLibraryParts(supabase),
@@ -171,6 +171,30 @@ export default function Home() {
     if (quoteId === id) handleBackToList();
   }
 
+  async function handlePushToLibrary(item: ReviewItem) {
+    const ctx = orgCtxRef.current;
+    if (!ctx || !appState) return;
+    if (item.kind === 'part') {
+      const bomItem = appState.bom.find(
+        b => b.partNumber.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
+      );
+      if (!bomItem) return;
+      const entries = (appState.materialCosts[bomItem.id] ?? []).filter(
+        e => e.annualQty > 0 && e.cost > 0,
+      );
+      await pushPartToLibrary(supabase, ctx.orgId, bomItem.partNumber, bomItem.description, bomItem.uom, entries);
+    } else {
+      const eq = appState.equipment.find(
+        e => e.name.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
+      );
+      if (!eq) return;
+      await pushEquipmentToLibrary(supabase, ctx.orgId, eq.name, eq.capex, eq.hourlyRunCost, eq.annualMaintenance);
+    }
+    const [lp, le] = await Promise.all([listLibraryParts(supabase), listLibraryEquipment(supabase)]);
+    setLibraryParts(lp);
+    setLibraryEquip(le);
+  }
+
   function handleExport() {
     if (!appState) return;
     const a = document.createElement('a');
@@ -233,7 +257,7 @@ export default function Home() {
 
   function renderTab() {
     switch (currentTab) {
-      case 'info':    return <QuoteInfoTab     {...sharedProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} />;
+      case 'info':    return <QuoteInfoTab     {...sharedProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={handlePushToLibrary} />;
       case 'fgs':     return <FinishedGoodsTab {...sharedProps} />;
       case 'bom':     return <BOMTab           {...sharedProps} />;
       case 'matcost': return <MaterialCostsTab {...sharedProps} />;

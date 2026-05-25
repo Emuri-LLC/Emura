@@ -114,6 +114,7 @@ export interface LibraryPart {
   description: string;
   uom: string;
   prices: LibraryPartPrice[];  // sorted ascending by minQty
+  locked: boolean;             // true if used in multiple quotes — auto-sync disabled
 }
 
 export interface LibraryEquipment {
@@ -122,6 +123,7 @@ export interface LibraryEquipment {
   capex: number;
   hourlyRunCost: number;
   annualMaintenance: number;
+  locked: boolean;             // true if used in multiple quotes — auto-sync disabled
 }
 
 export interface ReviewItem {
@@ -133,6 +135,7 @@ export interface ReviewItem {
   quoteValue: number;
   libraryValue: number;
   direction: 'red' | 'green'; // red = library >= quote (possible underestimate); green = library < quote
+  locked: boolean;             // true if library entry is locked (used in multiple quotes)
 }
 
 // Returns the best applicable library price for a given annual qty:
@@ -179,6 +182,7 @@ export function computeQuoteReview(
         quoteValue: found.cost,
         libraryValue: libPrice.unitCost,
         direction: libPrice.unitCost >= found.cost ? 'red' : 'green',
+        locked: libPart.locked,
       });
     }
   }
@@ -205,6 +209,7 @@ export function computeQuoteReview(
         quoteValue: c.quoteVal,
         libraryValue: c.libVal,
         direction: c.libVal > c.quoteVal ? 'red' : 'green',
+        locked: libEq.locked,
       });
     }
   }

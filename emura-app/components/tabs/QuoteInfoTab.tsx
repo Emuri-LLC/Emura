@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
-import type { AppState, LibraryPart, LibraryEquipment } from '@/lib/calculations';
+import type { AppState, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
 import InfoIcon from '@/components/InfoIcon';
 import QuoteReview from '@/components/QuoteReview';
 
@@ -12,9 +12,10 @@ interface Props {
   resetKey?: number;
   libraryParts?: LibraryPart[];
   libraryEquipment?: LibraryEquipment[];
+  onPushToLibrary?: (item: ReviewItem) => void;
 }
 
-export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libraryEquipment = [] }: Props) {
+export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libraryEquipment = [], onPushToLibrary }: Props) {
   const notesRef = useRef<HTMLDivElement>(null);
 
   // Set the contenteditable notes HTML once on mount.
@@ -171,6 +172,7 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
       libraryParts={libraryParts}
       libraryEquipment={libraryEquipment}
       onUpdate={onUpdate}
+      onPushToLibrary={onPushToLibrary ?? (() => {})}
     />
 
     </>
