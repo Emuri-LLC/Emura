@@ -117,7 +117,7 @@ export default function OperationsTab({ state, onUpdate }: Props) {
                     <tr key={op.id} {...dlSort.dragProps(i)} className={dlSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
                       <td className="op-name"><input type="text" value={op.name ?? ''} onChange={e => setDL(i, { name: e.target.value })} /></td>
-                      <td><input type="number" min={1} style={{ maxWidth: 50 }} value={op.operators ?? 1} onChange={e => setDL(i, { operators: parseInt(e.target.value) || 1 })} /></td>
+                      <td><input type="number" min={0.1} step="any" style={{ maxWidth: 50 }} value={op.operators ?? 1} onChange={e => setDL(i, { operators: parseFloat(e.target.value) || 1 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.cycleTimeSec || ''} onChange={e => setDL(i, { cycleTimeSec: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.orderSetupMin || ''} onChange={e => setDL(i, { orderSetupMin: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.lineSetupMin || ''} onChange={e => setDL(i, { lineSetupMin: parseFloat(e.target.value) || 0 })} /></td>
