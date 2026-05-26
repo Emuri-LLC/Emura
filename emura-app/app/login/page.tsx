@@ -15,10 +15,17 @@ function LoginContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
+  const inviteToken = searchParams.get('token');
+  const isInviteFlow = !!inviteToken;
+
   useEffect(() => {
     const inviteEmail = searchParams.get('email');
-    if (inviteEmail) { setEmail(inviteEmail); setMode('signup'); }
-  }, [searchParams]);
+    // Switch to sign-up when arriving via an invite link (token param) or pre-filled email
+    if (inviteEmail || inviteToken) {
+      setMode('signup');
+      if (inviteEmail) setEmail(inviteEmail);
+    }
+  }, [searchParams, inviteToken]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,13 +40,12 @@ function LoginContent() {
       const token = searchParams.get('token');
       router.push(token ? `/join?token=${token}` : '/');
     } else {
-      if (!company.trim()) { setError('Company name is required.'); setLoading(false); return; }
-      const inviteToken = searchParams.get('token');
+      if (!isInviteFlow && !company.trim()) { setError('Company name is required.'); setLoading(false); return; }
       const { error } = await supabase.auth.signUp({
         email, password,
         options: {
-          data: { company_name: company.trim() },
-          emailRedirectTo: inviteToken
+          data: company.trim() ? { company_name: company.trim() } : {},
+          emailRedirectTo: isInviteFlow
             ? `${window.location.origin}/join?token=${inviteToken}`
             : window.location.origin,
         },
@@ -77,16 +83,20 @@ function LoginContent() {
               Check your email
             </p>
             <p style={{ fontSize: 12.5, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
-              We sent a confirmation link to <strong>{email}</strong>.
-              Click it to activate your account, then sign in below.
+              We sent a confirmation link to <strong>{email}</strong>.{' '}
+              {isInviteFlow
+                ? 'Click it to confirm your account and join the organization — you\'ll be taken straight into the app.'
+                : 'Click it to activate your account, then sign in below.'}
             </p>
-            <button
-              onClick={() => { setConfirmed(false); setMode('signin'); }}
-              style={{ padding: '8px 20px', background: '#1a2940', color: '#fff',
-                border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-            >
-              Go to Sign In
-            </button>
+            {!isInviteFlow && (
+              <button
+                onClick={() => { setConfirmed(false); setMode('signin'); }}
+                style={{ padding: '8px 20px', background: '#1a2940', color: '#fff',
+                  border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Go to Sign In
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -98,7 +108,7 @@ function LoginContent() {
                 <input type="email" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
               </div>
 
-              {mode === 'signup' && (
+              {mode === 'signup' && !isInviteFlow && (
                 <div style={{ marginBottom: 14 }}>
                   <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
                     Company Name
