@@ -11,12 +11,22 @@ export interface OrgContext {
   departmentId: string;
 }
 
+export interface QuoteRevision {
+  id:        string;
+  revNumber: number;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface QuoteSummary {
-  id:         string;
-  name:       string;
-  customer:   string;
-  updatedAt:  string;
-  createdBy:  string;
+  id:            string;
+  name:          string;
+  customer:      string;
+  updatedAt:     string;
+  createdBy:     string;
+  lastUpdatedBy: string;
+  quoteNumber:   number;
+  revisions:     QuoteRevision[];
 }
 
 export interface Site {
@@ -73,18 +83,32 @@ export async function getMyOrgContext(supabase: SupabaseClient): Promise<OrgCont
 export async function listQuotes(supabase: SupabaseClient): Promise<QuoteSummary[]> {
   const { data, error } = await supabase
     .from('quotes')
-    .select('id, name, customer, updated_at, created_by')
+    .select('id, name, customer, updated_at, created_by, last_updated_by, quote_number, quote_revisions(id, rev_number, created_at, created_by)')
     .order('updated_at', { ascending: false });
 
   if (error || !data) return [];
 
-  return data.map(r => ({
-    id:        r.id,
-    name:      r.name,
-    customer:  r.customer,
-    updatedAt: r.updated_at,
-    createdBy: r.created_by,
-  }));
+  return data.map(r => {
+    const raw = r as unknown as {
+      id: string; name: string; customer: string; updated_at: string;
+      created_by: string | null; last_updated_by: string | null;
+      quote_number: number | null;
+      quote_revisions: Array<{ id: string; rev_number: number; created_at: string; created_by: string | null }>;
+    };
+    const revisions: QuoteRevision[] = (raw.quote_revisions ?? [])
+      .map(rv => ({ id: rv.id, revNumber: rv.rev_number, createdAt: rv.created_at, createdBy: rv.created_by ?? '' }))
+      .sort((a, b) => b.revNumber - a.revNumber);
+    return {
+      id:            raw.id,
+      name:          raw.name,
+      customer:      raw.customer,
+      updatedAt:     raw.updated_at,
+      createdBy:     raw.created_by ?? '',
+      lastUpdatedBy: raw.last_updated_by ?? raw.created_by ?? '',
+      quoteNumber:   raw.quote_number ?? 0,
+      revisions,
+    };
+  });
 }
 
 export async function loadQuote(supabase: SupabaseClient, id: string): Promise<AppState | null> {
@@ -102,7 +126,7 @@ export async function createQuote(
   supabase: SupabaseClient,
   state: AppState,
   departmentId: string,
-): Promise<string | null> {
+): Promise<{ id: string; quoteNumber: number } | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
@@ -115,11 +139,11 @@ export async function createQuote(
       customer:      state.quote.customer || '',
       state:         state as unknown as Record<string, unknown>,
     })
-    .select('id')
+    .select('id, quote_number')
     .single();
 
   if (error || !data) return null;
-  return data.id;
+  return { id: data.id, quoteNumber: (data as unknown as { quote_number: number }).quote_number ?? 0 };
 }
 
 export async function saveQuote(
@@ -127,14 +151,65 @@ export async function saveQuote(
   id: string,
   state: AppState,
 ): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
   await supabase
     .from('quotes')
     .update({
-      name:     state.quote.name || 'New Quote',
-      customer: state.quote.customer || '',
-      state:    state as unknown as Record<string, unknown>,
+      name:            state.quote.name || 'New Quote',
+      customer:        state.quote.customer || '',
+      state:           state as unknown as Record<string, unknown>,
+      updated_at:      new Date().toISOString(),
+      last_updated_by: user?.id ?? null,
     })
     .eq('id', id);
+}
+
+export async function saveRevision(
+  supabase: SupabaseClient,
+  quoteId: string,
+  state: AppState,
+): Promise<QuoteRevision | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: top } = await supabase
+    .from('quote_revisions')
+    .select('rev_number')
+    .eq('quote_id', quoteId)
+    .order('rev_number', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const nextNum = ((top as { rev_number: number } | null)?.rev_number ?? 0) + 1;
+
+  const { data, error } = await supabase
+    .from('quote_revisions')
+    .insert({
+      quote_id:   quoteId,
+      rev_number: nextNum,
+      state:      state as unknown as Record<string, unknown>,
+      created_by: user.id,
+    })
+    .select('id, rev_number, created_at, created_by')
+    .single();
+
+  if (error || !data) return null;
+  const r = data as unknown as { id: string; rev_number: number; created_at: string; created_by: string | null };
+  return { id: r.id, revNumber: r.rev_number, createdAt: r.created_at, createdBy: r.created_by ?? '' };
+}
+
+export async function loadQuoteRevision(
+  supabase: SupabaseClient,
+  revisionId: string,
+): Promise<AppState | null> {
+  const { data, error } = await supabase
+    .from('quote_revisions')
+    .select('state')
+    .eq('id', revisionId)
+    .single();
+
+  if (error || !data) return null;
+  return migrateState(data.state as Record<string, unknown>);
 }
 
 export async function deleteQuote(supabase: SupabaseClient, id: string): Promise<void> {

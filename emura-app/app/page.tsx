@@ -5,7 +5,7 @@ import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, syncPartsToLibrary, syncEquipmentToLibrary, listLibraryParts, listLibraryEquipment, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, syncPartsToLibrary, syncEquipmentToLibrary, listLibraryParts, listLibraryEquipment, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -43,10 +43,13 @@ export default function Home() {
   const [libraryParts, setLibraryParts]     = useState<LibraryPart[]>([]);
   const [libraryEquipment, setLibraryEquip] = useState<LibraryEquipment[]>([]);
 
+  const [emailMap, setEmailMap] = useState<Record<string, string>>({});
+
   // Debounce timer for cloud saves
   const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ref so cloudSave (useCallback with [] deps) always sees current orgCtx
+  // Refs so cloudSave (useCallback with [] deps) always sees current values
   const orgCtxRef  = useRef<OrgContext | null>(null);
+  const userIdRef  = useRef<string>('');
 
   const supabase = createClient();
 
@@ -55,21 +58,29 @@ export default function Home() {
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
+      if (user) { setUserId(user.id); userIdRef.current = user.id; }
 
       const ctx = await getMyOrgContext(supabase);
       setOrgCtx(ctx);
       orgCtxRef.current = ctx;
 
       if (ctx) {
-        const [qs, lp, le] = await Promise.all([
+        const [qs, lp, le, emailsResult] = await Promise.all([
           listQuotes(supabase),
           listLibraryParts(supabase),
           listLibraryEquipment(supabase),
+          supabase.rpc('get_org_member_emails', { p_org_id: ctx.orgId }),
         ]);
         setQuotes(qs);
         setLibraryParts(lp);
         setLibraryEquip(le);
+        if (emailsResult.data) {
+          const map: Record<string, string> = {};
+          (emailsResult.data as { user_id: string; email: string }[]).forEach(r => {
+            map[r.user_id] = r.email;
+          });
+          setEmailMap(map);
+        }
       }
 
       setLoaded(true);
@@ -87,7 +98,7 @@ export default function Home() {
       await saveQuote(supabase, id, state);
       setQuotes(prev => prev.map(q =>
         q.id === id
-          ? { ...q, name: state.quote.name || 'New Quote', customer: state.quote.customer || '', updatedAt: new Date().toISOString() }
+          ? { ...q, name: state.quote.name || 'New Quote', customer: state.quote.customer || '', updatedAt: new Date().toISOString(), lastUpdatedBy: userIdRef.current }
           : q
       ));
       const ctx = orgCtxRef.current;
@@ -134,23 +145,29 @@ export default function Home() {
     // that would make history.length===1 and enable undo with nothing to revert to.
     if (appState !== null) setHistory(prev => [...prev.slice(-39), appState]);
     else setHistory([]);
-    const id = await createQuote(supabase, fresh, orgCtx.departmentId);
-    if (!id) return;
+    const result = await createQuote(supabase, fresh, orgCtx.departmentId);
+    if (!result) return;
+    const { id, quoteNumber } = result;
     setQuoteId(id);
     setAppState(fresh);
     saveState(fresh);
     setResetKey(k => k + 1);
     setQuotes(prev => [{
       id,
-      name:      fresh.quote.name,
-      customer:  fresh.quote.customer,
-      updatedAt: new Date().toISOString(),
-      createdBy: userId,
+      name:          fresh.quote.name,
+      customer:      fresh.quote.customer,
+      updatedAt:     new Date().toISOString(),
+      createdBy:     userId,
+      lastUpdatedBy: userId,
+      quoteNumber,
+      revisions:     [],
     }, ...prev]);
   }
 
-  async function handleOpenQuote(id: string) {
-    const state = await loadQuote(supabase, id);
+  async function handleOpenQuote(id: string, revisionId?: string) {
+    const state = revisionId
+      ? await loadQuoteRevision(supabase, revisionId)
+      : await loadQuote(supabase, id);
     if (!state) return;
     setHistory([]);
     setQuoteId(id);
@@ -163,6 +180,24 @@ export default function Home() {
     setQuoteId(null);
     setAppState(null);
     setHistory([]);
+  }
+
+  async function handleSaveRevision() {
+    if (!quoteId || !appState || !canEdit) return;
+    setSaveStatus('Saving revision…');
+    const rev = await saveRevision(supabase, quoteId, appState);
+    if (rev) {
+      setQuotes(prev => prev.map(q =>
+        q.id === quoteId
+          ? { ...q, revisions: [rev, ...q.revisions.filter(r => r.id !== rev.id)].sort((a, b) => b.revNumber - a.revNumber) }
+          : q
+      ));
+      setSaveStatus(`Rev ${rev.revNumber} saved`);
+      setTimeout(() => setSaveStatus('Saved'), 2000);
+    } else {
+      setSaveStatus('Save failed');
+      setTimeout(() => setSaveStatus('Saved'), 2000);
+    }
   }
 
   async function handleDeleteQuote(id: string) {
@@ -295,6 +330,11 @@ export default function Home() {
 
           {quoteId && appState && (
             <>
+              {canEdit && (
+                <button className="btn btn-add btn-sm" onClick={handleSaveRevision}>
+                  Save Revision
+                </button>
+              )}
               <button className="btn btn-undo btn-sm"
                 onClick={handleUndo} disabled={history.length === 0}>
                 &#8630; Undo
@@ -320,6 +360,7 @@ export default function Home() {
             quotes={quotes}
             userId={userId}
             role={orgCtx.role}
+            emailMap={emailMap}
             onOpen={handleOpenQuote}
             onNew={handleNew}
             onDelete={handleDeleteQuote}
