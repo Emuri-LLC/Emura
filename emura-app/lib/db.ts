@@ -45,11 +45,17 @@ export async function getMyOrgContext(supabase: SupabaseClient): Promise<OrgCont
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Use limit(1) + maybeSingle instead of single() so that duplicate org_members
+  // rows (e.g. trigger-created self-org + invite-accepted org) don't cause a
+  // "multiple rows" error. Order by created_at DESC so the invite-accepted row
+  // (inserted later) takes precedence over any accidental self-org.
   const { data, error } = await supabase
     .from('org_members')
     .select('org_id, role, department_id, organizations(name)')
     .eq('user_id', user.id)
-    .single();
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (error || !data) return null;
 
