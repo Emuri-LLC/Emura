@@ -12,17 +12,18 @@ import {
 } from '@/lib/db';
 
 interface Props {
-  open:    boolean;
-  onClose: () => void;
-  orgCtx:  OrgContext;
-  onOrgRenamed: (name: string) => void;
+  open:          boolean;
+  onClose:       () => void;
+  orgCtx:        OrgContext;
+  onOrgRenamed:  (name: string) => void;
+  currentUserId: string;
 }
 
 type DrawerTab = 'org' | 'sites' | 'users';
 
 interface SiteWithDepts extends Site { departments: Department[] }
 
-export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed }: Props) {
+export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, currentUserId }: Props) {
   const [tab, setTab]             = useState<DrawerTab>('org');
   const [orgName, setOrgName]     = useState(orgCtx.orgName);
   const [savingOrg, setSavingOrg] = useState(false);
@@ -62,15 +63,11 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed }: Pro
     const raw = await listMembers(supabase, orgCtx.orgId);
     setMembers(raw);
     setMembersLoaded(true);
-    // Resolve emails from org_invites (accepted ones)
-    const { data } = await supabase
-      .from('org_invites')
-      .select('email')
-      .eq('org_id', orgCtx.orgId)
-      .not('accepted_at', 'is', null);
+    // Resolve emails via security-definer RPC (can access auth.users)
+    const { data } = await supabase.rpc('get_org_member_emails', { p_org_id: orgCtx.orgId });
     if (data) {
       const map: Record<string, string> = {};
-      data.forEach((r: { email: string }) => { map[r.email] = r.email; });
+      (data as { user_id: string; email: string }[]).forEach(r => { map[r.user_id] = r.email; });
       setEmailMap(map);
     }
   }, [orgCtx.orgId]);
@@ -267,7 +264,7 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed }: Pro
                   member={m}
                   emailMap={emailMap}
                   allDepts={allDepts}
-                  currentUserId={orgCtx.orgId}
+                  currentUserId={currentUserId}
                   onUpdate={(role, deptId) => handleUpdateMember(m.id, role, deptId)}
                   onRemove={() => handleRemoveMember(m.id)}
                 />
@@ -434,7 +431,7 @@ function DeptRow({ dept, onRename, onDelete }: {
   );
 }
 
-function MemberRow({ member, emailMap, allDepts, onUpdate, onRemove }: {
+function MemberRow({ member, emailMap, allDepts, currentUserId, onUpdate, onRemove }: {
   member: OrgMember;
   emailMap: Record<string, string>;
   allDepts: (Department & { siteName: string })[];
@@ -443,6 +440,17 @@ function MemberRow({ member, emailMap, allDepts, onUpdate, onRemove }: {
   onRemove: () => void;
 }) {
   const display = emailMap[member.userId] ?? member.userId.slice(0, 8) + '…';
+  const isMe = member.userId === currentUserId;
+
+  if (isMe) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f2f5', fontSize: 12.5 }}>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555' }} title={display}>{display}</span>
+        <span style={{ fontSize: 11.5, color: '#666' }}>{member.role}</span>
+        <span style={{ fontSize: 11, background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>you</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f2f5', fontSize: 12.5 }}>

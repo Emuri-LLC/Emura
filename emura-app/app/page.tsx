@@ -365,6 +365,7 @@ export default function Home() {
           open={adminOpen}
           onClose={() => setAdminOpen(false)}
           orgCtx={orgCtx}
+          currentUserId={userId}
           onOrgRenamed={name => setOrgCtx(prev => prev ? { ...prev, orgName: name } : prev)}
         />
       )}

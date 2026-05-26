@@ -30,7 +30,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </head>
 <body>
 <h1>Emura — Manufacturing Cost Estimator</h1>
-<p class="subtitle">Product Specification — Version 0.5 — May 2026</p>
+<p class="subtitle">Product Specification — Version 0.6 — May 2026</p>
 <nav>
   <a href="#s1">1 Overview</a><a href="#s2">2 Concepts</a><a href="#s3">3 Modules</a>
   <a href="#s4">4 Data Model</a><a href="#s5">5 Calculations</a><a href="#s6">6 UX</a>
@@ -74,7 +74,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   <li><strong>Estimator</strong> — can create and edit quotes in their department</li>
   <li><strong>Viewer</strong> — read-only access to quotes in their department</li>
 </ul>
-<p>Admins can invite new users by generating an invite link from the <strong>Settings</strong> drawer (⚙ icon in the header). The link is valid for 7 days. The recipient signs up or signs in and is automatically added to the org with the assigned role and department.</p>
+<p>Admins can invite new users by generating an invite link from the <strong>Settings</strong> drawer (⚙ icon in the header). The link is valid for 7 days. When a recipient opens the invite link, they are shown the <strong>sign-up form</strong> (not sign-in). The company name field is hidden for invited users — they join an existing org rather than creating one. After email confirmation, the recipient is automatically redirected back to the join URL, the <code>accept_org_invite</code> RPC adds them to the org, and they land in the app with the assigned role and department.</p>
 
 <h3>1.5 Non-Goals (current version)</h3>
 <ul>
@@ -126,8 +126,8 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td>Indirect Rate ($/hr)</td><td>Rate applied to all indirect labor categories</td></tr>
 <tr><td>Working Hours/Year</td><td>Available production hours per year per cell; used for takt time and equipment CapEx utilization. Typical: 2,000 (1 shift) to 6,000 (3 shifts).</td></tr>
 <tr><td>CapEx Depreciation Years</td><td>Default depreciation period for non-project-specific equipment</td></tr>
-<tr><td>Volume Breaks</td><td>Add/remove/reorder break columns here. Each break has a label, builds/year, and optional target total EAU.</td></tr>
 </table>
+<p><em>Note: Volume Breaks are managed on the <strong>Finished Goods</strong> tab, not Quote Info. The column header of the Finished Goods table contains the break label, Builds/Year, and Target Total EAU fields. The "+ Add Break" button and per-break delete button are also on the Finished Goods tab.</em></p>
 
 <h4>Quote Review</h4>
 <p>A card displayed below the Quote Information and Cost Rate Settings cards on the Quote Info tab. It compares the current quote's material costs and equipment values against the org-wide library and surfaces discrepancies as actionable findings.</p>
@@ -135,12 +135,14 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td style="color:#dc2626;font-weight:700">● Red</td><td>Library price ≥ quote price at that volume</td><td>The quote may be underestimating cost — real market rate is at least as high as entered</td></tr>
 <tr><td style="color:#16a34a;font-weight:700">● Green</td><td>Library price &lt; quote price</td><td>The quote is conservative — library has a lower price available for this volume</td></tr>
 </table>
-<p>Each finding shows the part number or equipment name, break label and annual volume (for parts), the specific cost field (for equipment), the quote value, and the library value. Two update actions are available:</p>
+<p>Each finding shows the part number or equipment name, break label and annual volume (for parts), the specific cost field (for equipment), the quote value, and the library value. Update actions available per row:</p>
 <ul>
   <li><strong>← Use Library</strong> (per row): replaces that single finding's quote value with the library value. Undoable via the ↺ Undo button.</li>
+  <li><strong>→ Update Library</strong> (per row, locked entries only): overwrites the shared library entry with the current quote value, bypassing the lock. Visible only when the library entry is marked as shared (used in multiple quotes).</li>
   <li><strong>← Update All from Library</strong> (card header): applies all findings at once. Undoable.</li>
 </ul>
 <p>Parts matching uses case-insensitive part number comparison. Equipment matching uses case-insensitive name comparison. The library price lookup finds the highest <em>min_qty</em> tier that does not exceed the annual purchasing quantity for that break.</p>
+<p>Library entries marked <strong>🔒 shared</strong> are used in more than one quote — auto-sync does not overwrite them on save. The "→ Update Library" button provides an explicit override for shared entries when the estimator intends to update the canonical value.</p>
 
 <h3>3.2 Finished Goods</h3>
 <ul>
@@ -199,7 +201,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <h4>3.6.1 Direct Labor Operations</h4>
 <table><tr><th>Field</th><th>Description</th></tr>
 <tr><td>Operation Name</td><td>Work cell description (e.g. "SMT Assembly", "Final Test")</td></tr>
-<tr><td>Operators</td><td>Number of operators staffing the cell simultaneously during production</td></tr>
+<tr><td>Operators</td><td>Number of operators staffing the cell simultaneously during production. Fractional values are accepted (e.g. 0.5 for a shared operator).</td></tr>
 <tr><td>Cycle Time (sec)</td><td>Seconds to produce one unit; compared against takt time in the banner above the table</td></tr>
 <tr><td>Order Setup (min)</td><td>Minutes to set up this operation once per order event; cost shared across all units in the order</td></tr>
 <tr><td>Line Setup (min)</td><td>Minutes to set up this operation per FG line per order event; same duration assumed for all FGs</td></tr>
@@ -239,7 +241,9 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <p>Cells where material costs are incomplete (one or more BOM items have no cost on file) are flagged in red with a ⚠ indicator. Totals at the bottom of the table show total order quantity and total annual units per break.</p>
 
 <h2 id="s4">4. Data Model</h2>
-<p>All application state is a single JSON document. This is what is saved to local storage and what is exported/imported via the JSON button. The structure:</p>
+
+<h3>4.1 Quote State (JSON)</h3>
+<p>All quote state is a single JSON document. This is what is stored in Supabase, cached in browser local storage, and exported/imported via the JSON button. The structure:</p>
 <pre>{
   quote: { name, customer, date, revision, notes },
   // notes = HTML string, may contain base64-encoded images
@@ -278,8 +282,9 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   }],
 
   directOps: [{
-    id, name, operators, cycleTimeSec,
-    orderSetupMin, lineSetupMin,
+    id, name,
+    operators: number,              // may be fractional (e.g. 0.5 for a shared operator)
+    cycleTimeSec, orderSetupMin, lineSetupMin,
     equipmentIds: [equipmentId, ...],
     notes
   }],
@@ -294,6 +299,24 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 
   margins: { [fgId + "|" + breakIndex]: number }   // gross margin %
 }</pre>
+
+<h3>4.2 Parts &amp; Equipment Library (Supabase)</h3>
+<p>The org-wide library is stored in Supabase Postgres and is <em>not</em> part of the exported JSON. It is automatically maintained by the cloud-save pipeline.</p>
+<pre>parts (org_id, part_number unique per org)
+  id, org_id, part_number, description, uom,
+  source_quote_id,   // last quote that wrote this entry (nulled on quote delete)
+  locked             // true when used in &gt;1 quote — auto-sync skips locked entries
+
+part_prices (part_id, min_qty) — tiered pricing
+  id, part_id, min_qty, unit_cost, source
+  // price applies when annual_purch_qty &gt;= min_qty
+  // lookup: highest min_qty tier that does not exceed annualPurchQty
+
+equipment_library (org_id, name unique per org)
+  id, org_id, name, capex, hourly_run_cost, annual_maintenance,
+  source_quote_id,   // last quote that wrote this entry
+  locked             // true when used in &gt;1 quote — auto-sync skips locked entries</pre>
+<p><strong>Auto-sync rules:</strong> On every debounced cloud save, non-customer-supplied BOM items with a part number are upserted into <code>parts</code> and all entered cost entries are upserted into <code>part_prices</code>. All named equipment entries are upserted into <code>equipment_library</code>. If an entry was originally created by a different quote (different <code>source_quote_id</code>), it is marked <code>locked = true</code> and further auto-sync from either quote is disabled for that entry. A locked entry can still be updated explicitly via the "→ Update Library" button in Quote Review.</p>
 
 <h2 id="s5">5. Calculation Rules</h2>
 
@@ -311,27 +334,47 @@ AnnualPurchQty(BOMItem_k, j)  = Σ_i  BOMQty(BOMItem_k, FG_i) × EAU[i][j]
 <p>UnitCost is sourced from the material cost archive via proximity matching (see §3.4). If no match exists, the material subtotal is marked incomplete and flagged in the Summary.</p>
 
 <h3>5.3 Equipment Cost Per Unit</h3>
-<p>Calculated per operation, then summed. For each operation <em>Op</em> and each assigned equipment item <em>Eq</em> at break <em>j</em>:</p>
+<p>Equipment cost has two components calculated separately and then added together:</p>
+<ol>
+  <li><strong>CapEx + Maintenance</strong> — charged once per equipment item per break, based on total utilization across <em>all</em> operations that use that equipment.</li>
+  <li><strong>Run Cost</strong> — charged per operation, based on the cycle time of that specific operation.</li>
+</ol>
+
+<h4>Step 1: Utilization (per equipment item, summing over all assigned operations)</h4>
 <div class="formula">
-OccupiedHrs/yr = (CycleTimeSec ÷ 3600 × TotalAnnualUnits[j])
-               + (OrderSetupMin ÷ 60 × BuildsPerYear[j])
-               + (LineSetupMin ÷ 60 × BuildsPerYear[j] × NumberOfFGs)
+For each operation <em>Op</em> that uses equipment <em>Eq</em>:
+  OpOccupiedHrs = (Op.cycleTimeSec ÷ 3600 × TotalAnnualUnits[j])
+                + (Op.orderSetupMin ÷ 60 × BuildsPerYear[j])
+                + (Op.lineSetupMin ÷ 60 × BuildsPerYear[j] × NumberOfFGs)
+  OpUtil = OpOccupiedHrs ÷ WorkingHoursPerYear
 
-Utilization = OccupiedHrs/yr ÷ WorkingHoursPerYear
+TotalUtil(Eq, j) = Σ_op  OpUtil   [sum over all ops that list Eq in their equipmentIds]
+</div>
 
+<h4>Step 2: CapEx and Maintenance per unit (once per equipment item)</h4>
+<div class="formula">
 <b>Non-Project-Specific equipment:</b>
-  CapExPerUnit   = (Eq.capex ÷ CapExYears) × Utilization ÷ TotalAnnualUnits[j]
-  MaintPerUnit   = Eq.annualMaintenance × Utilization ÷ TotalAnnualUnits[j]
+  CapExPerUnit = (Eq.capex ÷ CapExYears) × TotalUtil(Eq, j) ÷ TotalAnnualUnits[j]
+  MaintPerUnit = Eq.annualMaintenance × TotalUtil(Eq, j) ÷ TotalAnnualUnits[j]
 
 <b>Project-Specific equipment (tooling, fixtures, dedicated):</b>
-  CapExPerUnit   = Eq.capex ÷ TotalAnnualUnits[j]
-  MaintPerUnit   = Eq.annualMaintenance ÷ TotalAnnualUnits[j]
-
-RunCostPerUnit   = Eq.hourlyRunCost × (CycleTimeSec ÷ 3600)   [run hours only, no setups]
-
-EquipCostPerUnit(Eq) = CapExPerUnit + MaintPerUnit + RunCostPerUnit
+  CapExPerUnit = Eq.capex ÷ TotalAnnualUnits[j]         [no utilization factor; fully charged to project]
+  MaintPerUnit = Eq.annualMaintenance ÷ TotalAnnualUnits[j]
+  [Note: project-specific equipment is not amortized over capexYears — full CapEx charged per year]
 </div>
-<p>The utilization formula charges equipment for all time it is occupied: running parts, order setups, and line setups for every FG. This means a machine that does 10-minute order setups 12 times per year has that time counted against its annual capacity.</p>
+
+<h4>Step 3: Run Cost (per operation, per equipment item assigned to that operation)</h4>
+<div class="formula">
+RunCostPerUnit(Op, Eq) = Eq.hourlyRunCost × (Op.cycleTimeSec ÷ 3600)
+  [active machine time only — no setup time included]
+</div>
+
+<h4>Total equipment cost per unit at break j</h4>
+<div class="formula">
+EquipCostPerUnit[j] = Σ_eq  (CapExPerUnit(Eq) + MaintPerUnit(Eq))   [once per equipment]
+                    + Σ_op  Σ_eq∈op  RunCostPerUnit(Op, Eq)          [per op × per assigned eq]
+</div>
+<p>The utilization model charges equipment for all time it is occupied across every operation it is assigned to: production cycle time, order setups, and line setups for every FG. An equipment item assigned to two operations accumulates utilization from both. A machine shared across a long-cycle operation and a short setup operation will have a higher utilization (and therefore higher amortized cost per unit) than if it were used in only one operation.</p>
 
 <h3>5.4 Direct Labor Cost Per Unit</h3>
 <div class="formula">
@@ -410,7 +453,7 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <tr><td>Indirect Rate</td><td>Cost per hour for overhead/indirect labor (engineering, quality, purchasing, etc.).</td></tr>
 <tr><td>Working Hours/Year</td><td>Available production hours per year per machine or cell. Used for takt time and CapEx utilization. Typical: 2,000 (1 shift) to 6,000 (3 shifts).</td></tr>
 <tr><td>CapEx Depreciation Years</td><td>Years over which capital equipment is depreciated for time-based CapEx allocation.</td></tr>
-<tr><td rowspan="3">Volume Breaks</td><td>Label</td><td>Descriptive name for this volume scenario (e.g. "High Vol", "1000/yr").</td></tr>
+<tr><td rowspan="3">Volume Breaks<br><em>(Finished Goods tab)</em></td><td>Label</td><td>Descriptive name for this volume scenario (e.g. "High Vol", "1000/yr").</td></tr>
 <tr><td>Builds/Year</td><td>Order events per year. All FGs are built simultaneously each event.</td></tr>
 <tr><td>Target EAU</td><td>Optional target: total EAU across all FGs at this break. Enables mix validation and auto-fill.</td></tr>
 <tr><td rowspan="2">Finished Goods</td><td>FG Name</td><td>Name or part number for this finished good.</td></tr>
@@ -429,7 +472,7 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <tr><td>Annual Maint. ($)</td><td>Fixed annual maintenance cost. Allocated by utilization % (same logic as CapEx, but always over 1 year).</td></tr>
 <tr><td>Project-Specific</td><td>If checked: CapEx and maintenance spread over EAU instead of utilization %. Use for job-dedicated tooling or fixtures.</td></tr>
 <tr><td rowspan="7">Direct Labor</td><td>Operation Name</td><td>Name of this work cell or operation (e.g. "SMT Assembly", "Wave Solder").</td></tr>
-<tr><td>Operators</td><td>Number of operators staffing this cell during production.</td></tr>
+<tr><td>Operators</td><td>Number of operators staffing this cell during production. Fractional values accepted (e.g. 0.5 for a shared operator).</td></tr>
 <tr><td>Cycle Time (sec)</td><td>Seconds to produce one unit (cell throughput rate). Must be ≤ takt time to meet demand on a single shift.</td></tr>
 <tr><td>Order Setup (min)</td><td>Minutes to set up this operation once per order event (shared across all FGs in the order).</td></tr>
 <tr><td>Line Setup (min)</td><td>Minutes to set up this operation per FG line per order event. Same duration assumed for all FGs.</td></tr>
@@ -486,6 +529,6 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 </table>
 
 <hr style="margin-top:48px;border:none;border-top:1px solid #ddd">
-<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.5 — May 2026 — Emuri, LLC</p>
+<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.6 — May 2026 — Emuri, LLC</p>
 </body>
 </html>

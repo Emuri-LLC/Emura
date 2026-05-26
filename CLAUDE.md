@@ -67,9 +67,12 @@ per volume break.
 - Roles: `admin` (full access + settings), `estimator` (create/edit quotes), `viewer` (read-only)
 - Auto-creates org + Main Site + General dept on signup via `handle_new_user` trigger on auth.users
 - Admin gear icon (⚙) opens slide-out drawer: manage org name, sites, departments, users, invite links
-- Token-based invite flow: admin generates link → `/join?token=...` → recipient signs up/in → auto-joined
+- Token-based invite flow: admin generates link → `/join?token=...` → recipient signs up/in → auto-joined; invite page defaults to sign-up mode and hides the company name field
 - Undo/redo via history stack in page.tsx (40-state depth); Export/Import as JSON still available
 - All calculations run client-side synchronously
+- Parts & equipment library: auto-synced on every cloud save; locked entries (shared across multiple quotes) can only be updated via manual "→ Update Library" push
+- Quote Review panel (bottom of Quote Info tab): compares active quote against library; red = library ≥ quote (possible underestimate), green = library < quote (cost reduction available)
+- `getMyOrgContext` uses `order('created_at', desc).limit(1).maybeSingle()` to handle users with duplicate org_members rows (trigger self-org + invite-accepted org)
 
 ## Key file locations
 
@@ -91,6 +94,10 @@ per volume break.
 ### Components
 - `emura-app/components/QuotesList.tsx` — quote picker; entry point before a quote is open
 - `emura-app/components/AdminDrawer.tsx` — slide-out settings panel (admin only); sites/depts/users/invite
+  - Users tab: current user's row is **read-only** (shows "(you)" badge, no role/dept selects, no Remove button). Other rows are immediately editable (onChange fires API call immediately).
+  - Email resolution uses `get_org_member_emails(p_org_id)` security-definer RPC — NOT a direct `org_invites` query.
+  - `currentUserId` prop must come from `userId` state in `page.tsx` (the actual `auth.users` UUID). **Bug in earlier code**: was incorrectly passing `orgCtx.orgId` (the org UUID) instead, so the current user's row was never detected as self and was not read-only. Correct: `currentUserId={userId}`.
+- `emura-app/components/QuoteReview.tsx` — library vs quote comparison panel at bottom of Quote Info tab
 
 ### Logic
 - `emura-app/lib/calculations.ts` — all cost math as pure functions; defines all TypeScript interfaces
@@ -448,14 +455,15 @@ If you add a new field to `AppState`, add its guard to this list.
 ## Parts & Equipment Library
 
 ### Tables (run schema.sql block in Supabase SQL Editor to create)
-- `parts` — org-wide catalogue; unique on `(org_id, part_number)`
+- `parts` — org-wide catalogue; unique on `(org_id, part_number)`; columns include `source_quote_id` (UUID FK) and `locked` (boolean)
 - `part_prices` — tiered pricing keyed by `(part_id, min_qty)` where `min_qty` is annual purchasing qty
-- `equipment_library` — org-wide equipment; unique on `(org_id, name)`
+- `equipment_library` — org-wide equipment; unique on `(org_id, name)`; columns include `source_quote_id` and `locked`
 
 ### Auto-sync (no manual data entry needed)
 Every debounced cloud save calls `syncPartsToLibrary` and `syncEquipmentToLibrary` (both in `lib/db.ts`).
 - Parts: upserts non-customer-supplied BOM items with a part number, then upserts each `CostEntry` from `materialCosts` as a price tier. Material costs must be entered on the Material Costs tab before prices appear.
 - Equipment: upserts all named equipment entries from the quote.
+- Lock behavior: if a part/equipment already exists in the library and belongs to a *different* quote (`source_quote_id != quoteId`), the entry is marked `locked=true` and the auto-sync skips it. Locked entries require a manual push via `pushPartToLibrary` / `pushEquipmentToLibrary`.
 After sync, `listLibraryParts` and `listLibraryEquipment` refresh the in-memory state so Quote Review updates immediately.
 
 ### Stale closure gotcha
@@ -479,6 +487,10 @@ Update actions use `applyLibraryToQuote()` (pure function in `calculations.ts`) 
 a new `AppState` with the library values applied. Passed to `onUpdate` → goes through the normal
 undo history stack. Both per-row "← Use Library" and "← Update All from Library" are undoable.
 
+Locked entries show a "locked" badge in the Quote Review row. The per-row button for locked items
+is "→ Update Library" (calls `pushPartToLibrary` / `pushEquipmentToLibrary`) rather than "← Use Library",
+allowing an explicit forced push from the quote back to the shared library.
+
 ### RLS notes
 - `parts` and `part_prices`: readable by all org members; writable by admin + estimator
 - `equipment_library`: readable by all org members; writable by admin + estimator
@@ -490,6 +502,14 @@ undo history stack. Both per-row "← Use Library" and "← Update All from Libr
 
 ## Wrike Task Tracking
 
+### Before starting work
+
+Search Wrike for an applicable task using `mcp__wrike__wrike_search_tasks` (or the `mcp__claude_ai_Wrike__wrike_search_tasks` variant). Look in the Emura project/space. If a matching task exists, link to it before touching any code.
+
+Never show raw Wrike string IDs (e.g. `MAAAAAEKEaHj`) or numeric IDs to the user. Use task names and permalink URLs (`https://www.wrike.com/open.htm?id=<numericId>`).
+
+### Write the state file immediately
+
 When you identify the Wrike task you are about to implement, immediately write the state file **before making any code changes or commits**:
 
 ```bash
@@ -498,9 +518,36 @@ python3 -c "import json; open('/Users/eohano/Emuri/Emura/.claude/current-wrike-t
 
 Replace `<ID>` with the string task ID from `wrike_get_tasks` (e.g. `"MAAAAAEKEaHj"`), `<numericId>` with the integer ID, and `<title>` with the task title.
 
-A PostToolUse hook (`/.claude/hooks/wrike-git-hook.py`) reads this file on every git commit and push and automatically:
+Overwrite the file when switching to a new task. If the file is absent or `taskId` is empty, the hook exits silently (no Wrike updates occur).
+
+### Git hook (automatic)
+
+A PostToolUse hook at `.claude/hooks/wrike-git-hook.py` fires on every `git commit` and `git push` and automatically:
 - Posts a comment to the Wrike task via the REST API (with commit hash/message or push ref)
 - Updates the task due date to today
-- On git push: changes task status to **Review**
+- On `git push`: changes task status to **Review** (status ID `IEAG2PPMJMHLYVAE`)
 
-If the file is absent or `taskId` is empty, the hook exits silently. Overwrite the file when switching to a new task.
+The hook reads the Bearer token from `.mcp.json` (`mcpServers.wrike.args`). It always exits 0 so it never blocks Claude's workflow.
+
+### Completing a task (manual)
+
+When work is done and pushed, the git hook sets status to Review automatically. If you need to update status manually, use `wrike_update_task` with the string task ID and the appropriate custom status ID:
+
+| Status | Custom Status ID |
+|--------|-----------------|
+| Review | `IEAG2PPMJMHLYVAE` |
+
+To post a comment manually (the hook does this on commit/push, but if needed outside git):
+- Use the Wrike REST API: `POST https://www.wrike.com/api/v4/tasks/<taskId>/comments`
+- Body: `{ "text": "…" }`
+- Auth: `Authorization: Bearer <token>` (from `.mcp.json`)
+
+### Finding tasks
+
+```
+mcp__wrike__wrike_search_tasks   — search by keyword/title
+mcp__wrike__wrike_get_tasks      — get tasks in a specific folder/project
+mcp__wrike__wrike_get_spaces     — list top-level spaces to find the Emura project
+```
+
+If unsure which folder the Emura project is in, call `wrike_get_spaces` first, then `wrike_get_folder_project` to navigate to the right project, then `wrike_get_tasks`.
