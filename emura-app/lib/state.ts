@@ -32,7 +32,7 @@ export function defaultState(): AppState {
       name: 'New Quote',
       customer: '',
       date: new Date().toISOString().slice(0, 10),
-      revision: 'A',
+      revision: '',
       notes: '',
     },
     settings: {
@@ -41,6 +41,9 @@ export function defaultState(): AppState {
       capexYears: 5,
       workingHoursPerYear: 2000,
     },
+    laborRates: [
+      { id: uid(), name: 'Shop Rate', rate: 45 },
+    ],
     breaks: [
       { id: uid(), label: 'High Vol', buildsPerYear: 12, totalEAU: 0 },
       { id: uid(), label: 'Med Vol',  buildsPerYear: 4,  totalEAU: 0 },
@@ -94,6 +97,22 @@ export function migrateState(s: Record<string, unknown>): AppState {
   if (!state.subcontracts)  state.subcontracts  = [];
   if (!state.quote)         state.quote         = def.quote;
 
+  // Labor rates: if none exist, seed from legacy shopRate/indirectRate settings
+  if (!state.laborRates) {
+    const sr = parseFloat(String(settings.shopRate ?? 0)) || 0;
+    const ir = parseFloat(String(settings.indirectRate ?? 0)) || 0;
+    state.laborRates = sr > 0
+      ? [{ id: uid(), name: 'Shop Rate', rate: sr }]
+      : [...def.laborRates];
+    // Add indirect rate as a separate entry only when it differs meaningfully
+    if (ir > 0 && Math.abs(ir - sr) > 0.01) {
+      state.laborRates.push({ id: uid(), name: 'Indirect Rate', rate: ir });
+    }
+  }
+
+  // Ensure revision note field exists (previously may have been 'A' or similar)
+  if (!state.quote.revision) state.quote.revision = '';
+
   // Breaks
   state.breaks.forEach(b => {
     if (b.totalEAU === undefined) b.totalEAU = 0;
@@ -115,7 +134,7 @@ export function migrateState(s: Record<string, unknown>): AppState {
   if (!state.margins)          state.margins = {};
   if (!state.materialSources)  state.materialSources = {};
 
-  // Direct ops: migrate old per-op capex to equipment entries
+  // Direct ops: migrate old per-op capex to equipment entries; ensure rateId exists
   state.directOps.forEach(op => {
     const raw = op as unknown as Record<string, unknown>;
     delete raw['lineSetupOverrides'];
@@ -136,12 +155,14 @@ export function migrateState(s: Record<string, unknown>): AppState {
       }
     }
     delete raw['capex'];
+    if (op.rateId === undefined) op.rateId = '';
   });
 
-  // Indirect ops
+  // Indirect ops: ensure rateId exists
   state.indirectOps.forEach(op => {
     const raw = op as unknown as Record<string, unknown>;
     delete raw['lineSetupOverrides'];
+    if (op.rateId === undefined) op.rateId = '';
   });
 
   return state;

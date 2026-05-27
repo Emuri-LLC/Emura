@@ -1,17 +1,101 @@
 'use client';
 
+import { useState, useRef } from 'react';
 import { useDragSort } from '@/hooks/useDragSort';
 import InfoIcon from '@/components/InfoIcon';
-import type { AppState, BOMItem } from '@/lib/calculations';
+import type { AppState, BOMItem, LibraryPart } from '@/lib/calculations';
 import { uid, parseFraction } from '@/lib/state';
 
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
   resetKey?: number;
+  libraryParts?: LibraryPart[];
 }
 
-export default function BOMTab({ state, onUpdate, resetKey = 0 }: Props) {
+// ── Part number autocomplete ──────────────────────────────────
+
+function PartNumberInput({ value, bomItems, libraryParts, onCommit }: {
+  value: string;
+  bomItems: BOMItem[];
+  libraryParts: LibraryPart[];
+  onCommit: (pn: string, extra?: { description: string; uom: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openMenu() {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    setMenuStyle({ position: 'fixed', top: r.bottom + 2, left: r.left, width: Math.max(260, r.width), zIndex: 9999 });
+    setOpen(true);
+  }
+
+  const q = query.toLowerCase();
+  const quoteMatches = bomItems.filter(i => i.partNumber.trim() && i.partNumber.toLowerCase().includes(q));
+  const libMatches   = libraryParts.filter(lp => lp.partNumber.toLowerCase().includes(q) &&
+    !bomItems.some(i => i.partNumber.trim().toLowerCase() === lp.partNumber.trim().toLowerCase()));
+
+  const hasMatches = quoteMatches.length > 0 || libMatches.length > 0;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => { openMenu(); }}
+        onBlur={() => { setTimeout(() => { setOpen(false); onCommit(query); }, 150); }}
+        autoComplete="off"
+      />
+      {open && hasMatches && (
+        <div className="eq-menu" style={menuStyle}>
+          {quoteMatches.length > 0 && (
+            <>
+              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb' }}>
+                From this quote
+              </div>
+              {quoteMatches.map(i => (
+                <div key={i.id} className="eq-item">
+                  <label onMouseDown={e => e.preventDefault()} onClick={() => { setQuery(i.partNumber); setOpen(false); onCommit(i.partNumber); }}>
+                    <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{i.partNumber}</span>
+                    {i.description && <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>{i.description}</span>}
+                  </label>
+                </div>
+              ))}
+            </>
+          )}
+          {libMatches.length > 0 && (
+            <>
+              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb', borderTop: quoteMatches.length > 0 ? '1px solid #eee' : undefined }}>
+                From library
+              </div>
+              {libMatches.map(lp => (
+                <div key={lp.id} className="eq-item">
+                  <label onMouseDown={e => e.preventDefault()} onClick={() => {
+                    setQuery(lp.partNumber);
+                    setOpen(false);
+                    onCommit(lp.partNumber, { description: lp.description, uom: lp.uom });
+                  }}>
+                    <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{lp.partNumber}</span>
+                    {lp.description && <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>{lp.description}</span>}
+                    <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
+                    {lp.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
+                  </label>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [] }: Props) {
   const fgs    = state.finishedGoods;
   const common = state.bom.filter(item => !item.fgSpecific);
   const fgspec = state.bom.filter(item => item.fgSpecific);
@@ -85,7 +169,18 @@ export default function BOMTab({ state, onUpdate, resetKey = 0 }: Props) {
                         {...bomSort.dragProps(gi)}
                         className={bomSort.rowClass(gi, item.customerSupplied ? 'cs-row' : '')}>
                         <td className="drag-h">&#9776;</td>
-                        <td><input type="text" value={item.partNumber ?? ''} onChange={e => updateItem(gi, { partNumber: e.target.value })} /></td>
+                        <td>
+                          <PartNumberInput
+                            value={item.partNumber ?? ''}
+                            bomItems={state.bom.filter(b => b.id !== item.id && b.partNumber.trim())}
+                            libraryParts={libraryParts}
+                            onCommit={(pn, extra) => {
+                              const patch: Partial<BOMItem> = { partNumber: pn };
+                              if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
+                              updateItem(gi, patch);
+                            }}
+                          />
+                        </td>
                         <td><input type="text" value={item.description ?? ''} onChange={e => updateItem(gi, { description: e.target.value })} /></td>
                         <td style={{ width: 52 }}><input type="text" value={item.uom ?? ''} onChange={e => updateItem(gi, { uom: e.target.value })} /></td>
                         {/* Qty uses defaultValue+onBlur so fractions can be typed without interruption */}
@@ -143,7 +238,18 @@ export default function BOMTab({ state, onUpdate, resetKey = 0 }: Props) {
                         {...bomSort.dragProps(gi)}
                         className={bomSort.rowClass(gi, item.customerSupplied ? 'cs-row' : '')}>
                         <td className="drag-h">&#9776;</td>
-                        <td><input type="text" value={item.partNumber ?? ''} onChange={e => updateItem(gi, { partNumber: e.target.value })} /></td>
+                        <td>
+                          <PartNumberInput
+                            value={item.partNumber ?? ''}
+                            bomItems={state.bom.filter(b => b.id !== item.id && b.partNumber.trim())}
+                            libraryParts={libraryParts}
+                            onCommit={(pn, extra) => {
+                              const patch: Partial<BOMItem> = { partNumber: pn };
+                              if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
+                              updateItem(gi, patch);
+                            }}
+                          />
+                        </td>
                         <td><input type="text" value={item.description ?? ''} onChange={e => updateItem(gi, { description: e.target.value })} /></td>
                         <td style={{ width: 52 }}><input type="text" value={item.uom ?? ''} onChange={e => updateItem(gi, { uom: e.target.value })} /></td>
                         {fgs.length > 0

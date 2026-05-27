@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
-import type { AppState, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
+import type { AppState, LibraryPart, LibraryEquipment, LibraryLaborRate, ReviewItem } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, syncPartsToLibrary, syncEquipmentToLibrary, listLibraryParts, listLibraryEquipment, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -15,17 +15,19 @@ import MaterialCostsTab  from '@/components/tabs/MaterialCostsTab';
 import EquipmentTab      from '@/components/tabs/EquipmentTab';
 import OperationsTab     from '@/components/tabs/OperationsTab';
 import SummaryTab        from '@/components/tabs/SummaryTab';
+import MfgSummaryTab     from '@/components/tabs/MfgSummaryTab';
 import QuotesList        from '@/components/QuotesList';
 import AdminDrawer       from '@/components/AdminDrawer';
 
 const TABS = [
-  { id: 'info',    label: 'Quote Info'        },
-  { id: 'fgs',     label: 'Finished Goods'    },
-  { id: 'bom',     label: 'Bill of Materials' },
-  { id: 'matcost', label: 'Material Costs'    },
-  { id: 'equip',   label: 'Equipment'         },
-  { id: 'ops',     label: 'Operations'        },
-  { id: 'summary', label: 'Summary'           },
+  { id: 'info',       label: 'Quote Info'        },
+  { id: 'fgs',        label: 'Finished Goods'    },
+  { id: 'bom',        label: 'Bill of Materials' },
+  { id: 'matcost',    label: 'Material Costs'    },
+  { id: 'equip',      label: 'Equipment'         },
+  { id: 'ops',        label: 'Operations'        },
+  { id: 'summary',    label: 'Summary'           },
+  { id: 'mfgsummary', label: 'Mfg Summary'       },
 ];
 
 export default function Home() {
@@ -34,14 +36,17 @@ export default function Home() {
   const [orgCtx, setOrgCtx]           = useState<OrgContext | null>(null);
   const [quotes, setQuotes]           = useState<QuoteSummary[]>([]);
   const [userId, setUserId]           = useState('');
-  const [currentTab, setCurrentTab]   = useState('info');
-  const [history, setHistory]         = useState<AppState[]>([]);
-  const [resetKey, setResetKey]       = useState(0);
-  const [adminOpen, setAdminOpen]     = useState(false);
-  const [saveStatus, setSaveStatus]         = useState('Saved');
-  const [loaded, setLoaded]                 = useState(false);
-  const [libraryParts, setLibraryParts]     = useState<LibraryPart[]>([]);
-  const [libraryEquipment, setLibraryEquip] = useState<LibraryEquipment[]>([]);
+  const [currentTab, setCurrentTab]     = useState('info');
+  const [history, setHistory]           = useState<AppState[]>([]);
+  const [future, setFuture]             = useState<AppState[]>([]);
+  const [pendingRevClear, setPendingRevClear] = useState(false);
+  const [resetKey, setResetKey]         = useState(0);
+  const [adminOpen, setAdminOpen]       = useState(false);
+  const [saveStatus, setSaveStatus]           = useState('Saved');
+  const [loaded, setLoaded]                   = useState(false);
+  const [libraryParts, setLibraryParts]       = useState<LibraryPart[]>([]);
+  const [libraryEquipment, setLibraryEquip]   = useState<LibraryEquipment[]>([]);
+  const [libraryLaborRates, setLibraryLaborRates] = useState<LibraryLaborRate[]>([]);
 
   const [emailMap, setEmailMap] = useState<Record<string, string>>({});
 
@@ -65,15 +70,17 @@ export default function Home() {
       orgCtxRef.current = ctx;
 
       if (ctx) {
-        const [qs, lp, le, emailsResult] = await Promise.all([
+        const [qs, lp, le, llr, emailsResult] = await Promise.all([
           listQuotes(supabase),
           listLibraryParts(supabase),
           listLibraryEquipment(supabase),
+          listLibraryLaborRates(supabase),
           supabase.rpc('get_org_member_emails', { p_org_id: ctx.orgId }),
         ]);
         setQuotes(qs);
         setLibraryParts(lp);
         setLibraryEquip(le);
+        setLibraryLaborRates(llr);
         if (emailsResult.data) {
           const map: Record<string, string> = {};
           (emailsResult.data as { user_id: string; email: string }[]).forEach(r => {
@@ -106,13 +113,16 @@ export default function Home() {
         await Promise.all([
           syncPartsToLibrary(supabase, ctx.orgId, id, state),
           syncEquipmentToLibrary(supabase, ctx.orgId, id, state),
+          syncLaborRatesToLibrary(supabase, ctx.orgId, id, state),
         ]);
-        const [lp, le] = await Promise.all([
+        const [lp, le, llr] = await Promise.all([
           listLibraryParts(supabase),
           listLibraryEquipment(supabase),
+          listLibraryLaborRates(supabase),
         ]);
         setLibraryParts(lp);
         setLibraryEquip(le);
+        setLibraryLaborRates(llr);
       }
       setSaveStatus('Saved');
     }, 1000);
@@ -122,7 +132,13 @@ export default function Home() {
   // ── Handlers ────────────────────────────────────────────────
 
   function handleUpdate(newState: AppState) {
+    // On first edit after saving a revision, clear the revision note
+    if (pendingRevClear) {
+      newState = { ...newState, quote: { ...newState.quote, revision: '' } };
+      setPendingRevClear(false);
+    }
     setHistory(prev => [...prev.slice(-39), appState!]);
+    setFuture([]);  // clear redo stack on new action
     setAppState(newState);
     saveState(newState);                           // localStorage cache
     if (quoteId) cloudSave(quoteId, newState);    // cloud save (debounced)
@@ -131,6 +147,7 @@ export default function Home() {
   function handleUndo() {
     if (!history.length) return;
     const prev = history[history.length - 1];
+    setFuture(f => [...f.slice(-39), appState!]); // push current to redo stack
     setHistory(h => h.slice(0, -1));
     setAppState(prev);
     saveState(prev);
@@ -138,13 +155,23 @@ export default function Home() {
     setResetKey(k => k + 1);
   }
 
+  function handleRedo() {
+    if (!future.length) return;
+    const next = future[future.length - 1];
+    setHistory(h => [...h.slice(-39), appState!]); // push current to undo stack
+    setFuture(f => f.slice(0, -1));
+    setAppState(next);
+    saveState(next);
+    if (quoteId) cloudSave(quoteId, next);
+    setResetKey(k => k + 1);
+  }
+
   async function handleNew() {
     if (!orgCtx?.departmentId) return;
     const fresh = defaultState();
-    // Don't push null into history when creating from the list (appState is null there);
-    // that would make history.length===1 and enable undo with nothing to revert to.
     if (appState !== null) setHistory(prev => [...prev.slice(-39), appState]);
     else setHistory([]);
+    setFuture([]);
     const result = await createQuote(supabase, fresh, orgCtx.departmentId);
     if (!result) return;
     const { id, quoteNumber } = result;
@@ -170,6 +197,8 @@ export default function Home() {
       : await loadQuote(supabase, id);
     if (!state) return;
     setHistory([]);
+    setFuture([]);
+    setPendingRevClear(false);
     setQuoteId(id);
     setAppState(state);
     saveState(state);
@@ -180,6 +209,8 @@ export default function Home() {
     setQuoteId(null);
     setAppState(null);
     setHistory([]);
+    setFuture([]);
+    setPendingRevClear(false);
   }
 
   async function handleSaveRevision() {
@@ -192,6 +223,7 @@ export default function Home() {
           ? { ...q, revisions: [rev, ...q.revisions.filter(r => r.id !== rev.id)].sort((a, b) => b.revNumber - a.revNumber) }
           : q
       ));
+      setPendingRevClear(true); // clear revision note on next edit
       setSaveStatus(`Rev ${rev.revNumber} saved`);
       setTimeout(() => setSaveStatus('Saved'), 2000);
     } else {
@@ -246,6 +278,7 @@ export default function Home() {
       try {
         const imported = migrateState(JSON.parse(ev.target?.result as string));
         setHistory(prev => [...prev.slice(-39), appState!]);
+        setFuture([]);
         setAppState(imported);
         saveState(imported);
         if (quoteId) cloudSave(quoteId, imported);
@@ -292,14 +325,15 @@ export default function Home() {
 
   function renderTab() {
     switch (currentTab) {
-      case 'info':    return <QuoteInfoTab     {...sharedProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={handlePushToLibrary} />;
-      case 'fgs':     return <FinishedGoodsTab {...sharedProps} />;
-      case 'bom':     return <BOMTab           {...sharedProps} />;
-      case 'matcost': return <MaterialCostsTab {...sharedProps} />;
-      case 'equip':   return <EquipmentTab     {...sharedProps} />;
-      case 'ops':     return <OperationsTab    {...sharedProps} />;
-      case 'summary': return <SummaryTab       {...sharedProps} />;
-      default:        return <QuoteInfoTab     {...sharedProps} />;
+      case 'info':       return <QuoteInfoTab     {...sharedProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={handlePushToLibrary} />;
+      case 'fgs':        return <FinishedGoodsTab {...sharedProps} />;
+      case 'bom':        return <BOMTab           {...sharedProps} libraryParts={libraryParts} />;
+      case 'matcost':    return <MaterialCostsTab {...sharedProps} />;
+      case 'equip':      return <EquipmentTab     {...sharedProps} libraryEquipment={libraryEquipment} />;
+      case 'ops':        return <OperationsTab    {...sharedProps} libraryLaborRates={libraryLaborRates} />;
+      case 'summary':    return <SummaryTab       {...sharedProps} />;
+      case 'mfgsummary': return <MfgSummaryTab    {...sharedProps} />;
+      default:           return <QuoteInfoTab     {...sharedProps} />;
     }
   }
 
@@ -338,6 +372,10 @@ export default function Home() {
               <button className="btn btn-undo btn-sm"
                 onClick={handleUndo} disabled={history.length === 0}>
                 &#8630; Undo
+              </button>
+              <button className="btn btn-redo btn-sm"
+                onClick={handleRedo} disabled={future.length === 0}>
+                Redo &#8631;
               </button>
               <button className="btn btn-neu btn-sm" onClick={handleExport}>Export</button>
               <label className="btn btn-neu btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
@@ -386,14 +424,15 @@ export default function Home() {
               (() => {
                 const viewProps = { state: appState, onUpdate: () => {}, resetKey };
                 switch (currentTab) {
-                  case 'info':    return <QuoteInfoTab     {...viewProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} />;
-                  case 'fgs':     return <FinishedGoodsTab {...viewProps} />;
-                  case 'bom':     return <BOMTab           {...viewProps} />;
-                  case 'matcost': return <MaterialCostsTab {...viewProps} />;
-                  case 'equip':   return <EquipmentTab     {...viewProps} />;
-                  case 'ops':     return <OperationsTab    {...viewProps} />;
-                  case 'summary': return <SummaryTab       {...viewProps} />;
-                  default:        return <QuoteInfoTab     {...viewProps} />;
+                  case 'info':       return <QuoteInfoTab     {...viewProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} />;
+                  case 'fgs':        return <FinishedGoodsTab {...viewProps} />;
+                  case 'bom':        return <BOMTab           {...viewProps} libraryParts={libraryParts} />;
+                  case 'matcost':    return <MaterialCostsTab {...viewProps} />;
+                  case 'equip':      return <EquipmentTab     {...viewProps} libraryEquipment={libraryEquipment} />;
+                  case 'ops':        return <OperationsTab    {...viewProps} libraryLaborRates={libraryLaborRates} />;
+                  case 'summary':    return <SummaryTab       {...viewProps} />;
+                  case 'mfgsummary': return <MfgSummaryTab    {...viewProps} />;
+                  default:           return <QuoteInfoTab     {...viewProps} />;
                 }
               })()
             )}

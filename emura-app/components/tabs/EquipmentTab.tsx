@@ -2,15 +2,16 @@
 
 import { useDragSort } from '@/hooks/useDragSort';
 import InfoIcon from '@/components/InfoIcon';
-import type { AppState, Equipment } from '@/lib/calculations';
+import type { AppState, Equipment, LibraryEquipment } from '@/lib/calculations';
 import { uid } from '@/lib/state';
 
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
+  libraryEquipment?: LibraryEquipment[];
 }
 
-export default function EquipmentTab({ state, onUpdate }: Props) {
+export default function EquipmentTab({ state, onUpdate, libraryEquipment = [] }: Props) {
   const sort = useDragSort(state.equipment, equipment => onUpdate({ ...state, equipment }));
 
   function update(i: number, patch: Partial<Equipment>) {
@@ -19,6 +20,12 @@ export default function EquipmentTab({ state, onUpdate }: Props) {
 
   function addEquipment() {
     onUpdate({ ...state, equipment: [...state.equipment, { id: uid(), name: '', capex: 0, hourlyRunCost: 0, annualMaintenance: 0, projectSpecific: false }] });
+  }
+
+  function copyFromLibrary(le: LibraryEquipment) {
+    const existing = state.equipment.find(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase());
+    if (existing) return; // already in quote
+    onUpdate({ ...state, equipment: [...state.equipment, { id: uid(), name: le.name, capex: le.capex, hourlyRunCost: le.hourlyRunCost, annualMaintenance: le.annualMaintenance, projectSpecific: false }] });
   }
 
   function deleteEquipment(i: number) {
@@ -43,6 +50,24 @@ export default function EquipmentTab({ state, onUpdate }: Props) {
           <b>Project-Specific</b>: spreads cost over EAU rather than utilization %.
           Utilization = (cycle hrs × annual units + order setup hrs × builds/yr + line setup hrs × builds/yr × FG count) ÷ working hrs/yr.
         </div>
+        {/* Library equipment not yet in this quote */}
+        {libraryEquipment.filter(le => !state.equipment.some(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase())).length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>From library</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {libraryEquipment
+                .filter(le => !state.equipment.some(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase()))
+                .map(le => (
+                  <button key={le.id} className="btn btn-neu btn-sm" onClick={() => copyFromLibrary(le)}
+                    title={`CapEx: $${le.capex}, Run: $${le.hourlyRunCost}/hr, Maint: $${le.annualMaintenance}/yr`}>
+                    + {le.name}
+                    {le.locked && <span style={{ marginLeft: 4, fontSize: 9, color: '#c2410c' }}>locked</span>}
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+
         {state.equipment.length === 0 && <p className="empty-msg">No equipment defined.</p>}
         {state.equipment.length > 0 && (
           <div style={{ overflowX: 'auto' }}>

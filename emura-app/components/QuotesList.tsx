@@ -157,6 +157,7 @@ export default function QuotesList({ quotes, userId, role, emailMap, onOpen, onN
                             <RevRow
                               key={r.id}
                               label={`Rev ${r.revNumber}`}
+                              revNote={r.revNote}
                               date={r.createdAt}
                               displayName={resolveEmail(emailMap, r.createdBy)}
                               onClick={() => { setOpenRevs(null); onOpen(q.id, r.id); }}
@@ -178,8 +179,8 @@ export default function QuotesList({ quotes, userId, role, emailMap, onOpen, onN
 
 // ── Revision row (extracted to avoid inner-component anti-pattern) ─────────
 
-function RevRow({ label, bold, date, displayName, onClick }: {
-  label: string; bold?: boolean; date: string; displayName: string; onClick: () => void;
+function RevRow({ label, bold, revNote, date, displayName, onClick }: {
+  label: string; bold?: boolean; revNote?: string; date: string; displayName: string; onClick: () => void;
 }) {
   const [hover, setHover] = useState(false);
   return (
@@ -194,6 +195,7 @@ function RevRow({ label, bold, date, displayName, onClick }: {
       onClick={onClick}
     >
       <span style={{ fontWeight: bold ? 600 : 500, color: bold ? '#2563eb' : '#1a2940', minWidth: 96, fontSize: 12 }}>{label}</span>
+      {revNote && <span style={{ color: '#374151', fontSize: 12, fontStyle: 'italic' }}>{revNote}</span>}
       <span style={{ color: '#aaa', fontSize: 11 }}>—</span>
       <span style={{ color: '#555', fontSize: 12 }}>{fmtDate(date)}</span>
       <span style={{ color: '#aaa', fontSize: 11 }}>—</span>

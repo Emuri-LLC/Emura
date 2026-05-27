@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import type { Equipment } from '@/lib/calculations';
+import type { Equipment, LibraryEquipment } from '@/lib/calculations';
 
 interface Props {
   selectedIds: string[];
   equipment: Equipment[];
+  libraryEquipment?: LibraryEquipment[];
   onChange: (ids: string[]) => void;
   onCreateEquipment: (name: string) => void;
+  onCopyFromLibrary?: (libEq: LibraryEquipment) => void;
 }
 
 function isDefined(eq: Equipment) {
@@ -15,7 +17,7 @@ function isDefined(eq: Equipment) {
 }
 
 export default function EquipmentSelector({
-  selectedIds, equipment, onChange, onCreateEquipment,
+  selectedIds, equipment, libraryEquipment = [], onChange, onCreateEquipment, onCopyFromLibrary,
 }: Props) {
   const [query, setQuery]   = useState('');
   const [open, setOpen]     = useState(false);
@@ -26,7 +28,7 @@ export default function EquipmentSelector({
     if (!inputRef.current) return;
     const r = inputRef.current.getBoundingClientRect();
     setMenuStyle({ position: 'fixed', top: r.bottom + 2, left: r.left,
-      width: Math.max(200, r.width), zIndex: 9999 });
+      width: Math.max(220, r.width), zIndex: 9999 });
     setOpen(true);
   }
 
@@ -44,12 +46,20 @@ export default function EquipmentSelector({
     setOpen(false);
   }
 
-  const filtered = equipment.filter(eq =>
-    !query || eq.name.toLowerCase().includes(query.toLowerCase())
+  const q = query.toLowerCase();
+  const filteredQuote = equipment.filter(eq =>
+    !q || eq.name.toLowerCase().includes(q)
   );
-  const exactMatch = equipment.some(eq =>
-    eq.name.toLowerCase() === query.toLowerCase()
+
+  // Library entries not already in quote by name
+  const quoteNames = new Set(equipment.map(e => e.name.trim().toLowerCase()));
+  const filteredLib = libraryEquipment.filter(le =>
+    (!q || le.name.toLowerCase().includes(q)) &&
+    !quoteNames.has(le.name.trim().toLowerCase())
   );
+
+  const exactMatch = equipment.some(eq => eq.name.toLowerCase() === q) ||
+    libraryEquipment.some(le => le.name.toLowerCase() === q);
   const showCreate = query.length > 0 && !exactMatch;
 
   return (
@@ -91,18 +101,55 @@ export default function EquipmentSelector({
       {/* Dropdown */}
       {open && (
         <div className="eq-menu" style={menuStyle}>
-          {filtered.map(eq => (
-            <div key={eq.id} className="eq-item">
-              <label>
-                <input type="checkbox"
-                  checked={selectedIds.includes(eq.id)}
-                  onMouseDown={e => e.preventDefault()}
-                  onChange={() => toggle(eq.id)}
-                />
-                {' '}{eq.name}
-              </label>
-            </div>
-          ))}
+          {/* From this quote */}
+          {filteredQuote.length > 0 && (
+            <>
+              {libraryEquipment.length > 0 && (
+                <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb' }}>
+                  From this quote
+                </div>
+              )}
+              {filteredQuote.map(eq => (
+                <div key={eq.id} className="eq-item">
+                  <label>
+                    <input type="checkbox"
+                      checked={selectedIds.includes(eq.id)}
+                      onMouseDown={e => e.preventDefault()}
+                      onChange={() => toggle(eq.id)}
+                    />
+                    {' '}{eq.name}
+                  </label>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* From library */}
+          {filteredLib.length > 0 && (
+            <>
+              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb', borderTop: filteredQuote.length > 0 ? '1px solid #eee' : undefined }}>
+                From library
+              </div>
+              {filteredLib.map(le => (
+                <div key={le.id} className="eq-item">
+                  <label
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => {
+                      if (onCopyFromLibrary) onCopyFromLibrary(le);
+                      setQuery('');
+                      setOpen(false);
+                    }}
+                  >
+                    {le.name}
+                    {le.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
+                    <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
+                  </label>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Create new */}
           {showCreate && (
             <div className="eq-cr"
               onMouseDown={e => e.preventDefault()}
@@ -110,7 +157,8 @@ export default function EquipmentSelector({
               Add as new: &ldquo;{query}&rdquo;
             </div>
           )}
-          {!filtered.length && !showCreate && (
+
+          {!filteredQuote.length && !filteredLib.length && !showCreate && (
             <div style={{ padding: '6px 8px', color: '#aaa', fontSize: 12 }}>
               No equipment defined
             </div>

@@ -105,33 +105,37 @@ per volume break.
 
 ### Components
 - `emura-app/components/InfoIcon.tsx` — tooltip ⓘ icons with TIPS lookup object
-- `emura-app/components/EquipmentSelector.tsx` — searchable checkbox dropdown with chip display
+- `emura-app/components/EquipmentSelector.tsx` — searchable checkbox dropdown with chip display; shows "From this quote" / "From library" sections
+- `emura-app/components/LaborRateSelector.tsx` — single-select rate picker; same two-section structure as EquipmentSelector
 
 ### Tabs (emura-app/components/tabs/)
-- `QuoteInfoTab.tsx` — quote name, customer, notes (supports images), volume breaks
+- `QuoteInfoTab.tsx` — quote name, customer, notes (supports images); Labor Rates card replaces shopRate/indirectRate inputs; "Revision Note" field (cleared after first edit post-rev-save)
 - `FinishedGoodsTab.tsx` — FG list with EAU, mix, description
-- `BOMTab.tsx` — common + FG-specific BOM items with drag sort
+- `BOMTab.tsx` — common + FG-specific BOM items with drag sort; part number field shows "from this quote" / "from library" autocomplete
 - `MaterialCostsTab.tsx` — cost entries per part/break with source field
-- `EquipmentTab.tsx` — CapEx equipment entries
-- `OperationsTab.tsx` — direct ops, indirect ops, subcontract on one tab
+- `EquipmentTab.tsx` — CapEx equipment entries; "From library" chips for copy-on-use
+- `OperationsTab.tsx` — direct ops, indirect ops, subcontract on one tab; Rate column (LaborRateSelector) for each op
 - `SummaryTab.tsx` — cost breakdown table + margin/sell price per FG per break
+- `MfgSummaryTab.tsx` — manufacturing summary: takt/cycle, equipment utilization, DL hours per FG/break, IL hours factory-wide
 
 ### Hooks
 - `emura-app/hooks/useDragSort.ts` — HTML5 DnD reorderable rows; returns dragProps() and rowClass()
 
 ## Core TypeScript interfaces (in calculations.ts)
 ```
-AppState     { quote, settings, breaks, finishedGoods, bom, materialCosts,
+AppState     { quote, settings, laborRates, breaks, finishedGoods, bom, materialCosts,
                materialSources, equipment, directOps, indirectOps, subcontracts, margins }
 Break        { id, label, buildsPerYear, totalEAU }
 FGBreak      { eau? }
 FinishedGood { id, name, description, breaks: FGBreak[] }   // breaks index-aligned to state.breaks
 BOMItem      { id, partNumber, description, uom, fgSpecific, customerSupplied, qty, fgQtys }
 Equipment    { id, name, capex, hourlyRunCost, annualMaintenance, projectSpecific }
-DirectOp     { id, name, operators, cycleTimeSec, orderSetupMin, lineSetupMin, equipmentIds[], notes }
-IndirectOp   { id, name, annualHours, orderSetupHrs, lineSetupHrs, notes }
+LaborRate    { id, name, rate }                              // named $/hr rate category
+DirectOp     { id, name, operators, cycleTimeSec, orderSetupMin, lineSetupMin, equipmentIds[], notes, rateId? }
+IndirectOp   { id, name, annualHours, orderSetupHrs, lineSetupHrs, notes, rateId? }
 Subcontract  { id, name, priceEach, pricePerLine, pricePerOrder, pricePerYear, notes }
 settings     { shopRate, indirectRate, capexYears, workingHoursPerYear }
+             // shopRate/indirectRate are internal fallbacks when op.rateId is unset
 ```
 
 ## Design principles
@@ -271,6 +275,22 @@ Reasoning: annual cost = orderSetupHrs × bpy × rate; per unit = /(toq × bpy) 
 - Non-project-specific: `capexPerUnit = (capex / settings.capexYears) × util / tau`
 - Non-project-specific maintenance: `maintPerUnit = annualMaintenance × util / tau`
 - Project-specific: `capexPerUnit = capex / tau`; `maintPerUnit = annualMaintenance / tau`
+
+### Labor rate resolution
+Direct ops: `op.rateId → state.laborRates.find(r => r.id === rateId)?.rate ?? settings.shopRate`
+Indirect ops: same but falls back to `settings.indirectRate`
+`settings.shopRate` and `settings.indirectRate` are now hidden internal fallbacks — they are NOT shown in the UI. The Labor Rates list on Quote Info tab is the only UI surface. Migration creates rate entries from old shopRate/indirectRate so existing quotes keep their values.
+
+### Revision Note behavior
+`state.quote.revision` is the "Revision Note" — a brief description of the working draft.
+When `saveRevision` succeeds, `pendingRevClear` is set to `true` in `page.tsx`.
+On the **next** call to `handleUpdate`, the revision field is cleared and `pendingRevClear` reset.
+This preserves the note for reading after saving but clears it once you start the next draft.
+
+### Redo stack
+`future: AppState[]` in `page.tsx` — mirrors `history` but holds undone states.
+`handleUpdate` clears future. `handleUndo` pushes current to future. `handleRedo` pops from future, pushes current to history.
+Navigation between tabs does NOT affect undo/redo — same behavior as undo.
 
 ### Sell price
 `totalCost / (1 - margin/100)` — gross margin basis
@@ -447,6 +467,10 @@ Current fields and their guards:
 - `finishedGoods`, `bom`, `directOps`, `indirectOps`, `subcontracts` — `if (!state.x) state.x = []`
 - `equipment`, `margins`, `materialSources`, `materialCosts` — `if (!state.x) state.x = {}`/`[]`
 - `quote` — `if (!state.quote) state.quote = def.quote`
+- `laborRates` — `if (!state.laborRates)` create from old shopRate/indirectRate (migration preserves rates)
+- `directOps[*].rateId` — `if (op.rateId === undefined) op.rateId = ''`
+- `indirectOps[*].rateId` — same
+- `quote.revision` — `if (!state.quote.revision) state.quote.revision = ''`
 
 If you add a new field to `AppState`, add its guard to this list.
 
@@ -458,6 +482,7 @@ If you add a new field to `AppState`, add its guard to this list.
 - `parts` — org-wide catalogue; unique on `(org_id, part_number)`; columns include `source_quote_id` (UUID FK) and `locked` (boolean)
 - `part_prices` — tiered pricing keyed by `(part_id, min_qty)` where `min_qty` is annual purchasing qty
 - `equipment_library` — org-wide equipment; unique on `(org_id, name)`; columns include `source_quote_id` and `locked`
+- `labor_rate_library` — org-wide labor rates; unique on `(org_id, name)`; same lock/source pattern as equipment
 
 ### Auto-sync (no manual data entry needed)
 Every debounced cloud save calls `syncPartsToLibrary` and `syncEquipmentToLibrary` (both in `lib/db.ts`).

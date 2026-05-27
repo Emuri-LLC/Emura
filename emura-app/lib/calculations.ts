@@ -44,6 +44,19 @@ export interface Equipment {
   projectSpecific: boolean;
 }
 
+export interface LaborRate {
+  id: string;
+  name: string;
+  rate: number; // $/hr
+}
+
+export interface LibraryLaborRate {
+  id: string;
+  name: string;
+  rate: number;
+  locked: boolean;
+}
+
 export interface DirectOp {
   id: string;
   name: string;
@@ -53,6 +66,7 @@ export interface DirectOp {
   lineSetupMin: number;
   equipmentIds: string[];
   notes: string;
+  rateId?: string; // references state.laborRates[].id; falls back to settings.shopRate if unset
 }
 
 export interface IndirectOp {
@@ -62,6 +76,7 @@ export interface IndirectOp {
   orderSetupHrs: number;
   lineSetupHrs: number;
   notes: string;
+  rateId?: string; // references state.laborRates[].id; falls back to settings.indirectRate if unset
 }
 
 export interface Subcontract {
@@ -79,15 +94,16 @@ export interface AppState {
     name: string;
     customer: string;
     date: string;
-    revision: string;
+    revision: string; // "Revision Note" — brief description cleared after rev save
     notes: string;
   };
   settings: {
-    shopRate: number;
-    indirectRate: number;
+    shopRate: number;    // internal default for direct ops with no rateId
+    indirectRate: number; // internal default for indirect ops with no rateId
     capexYears: number;
     workingHoursPerYear: number;
   };
+  laborRates: LaborRate[];
   breaks: Break[];
   finishedGoods: FinishedGood[];
   bom: BOMItem[];
@@ -396,6 +412,24 @@ export function calcEquipCost(state: AppState, op: DirectOp, _bki: number): numb
   return cost;
 }
 
+// ── Rate resolution ───────────────────────────────────────────
+
+export function resolveDirectRate(state: AppState, op: DirectOp): number {
+  if (op.rateId) {
+    const r = (state.laborRates ?? []).find(lr => lr.id === op.rateId);
+    if (r) return r.rate;
+  }
+  return n(state.settings.shopRate);
+}
+
+export function resolveIndirectRate(state: AppState, op: IndirectOp): number {
+  if (op.rateId) {
+    const r = (state.laborRates ?? []).find(lr => lr.id === op.rateId);
+    if (r) return r.rate;
+  }
+  return n(state.settings.indirectRate);
+}
+
 // ── Main cost rollup ──────────────────────────────────────────
 
 export function calcCosts(
@@ -406,7 +440,6 @@ export function calcCosts(
   const fg = state.finishedGoods[fgi];
   if (!fg) return null;
 
-  const { shopRate, indirectRate } = state.settings;
   const eau = n((fg.breaks[bki] || {}).eau);
   const qpb = qtyPerBuild(state, fgi, bki);
   const toq = totalOrderQty(state, bki);
@@ -425,27 +458,29 @@ export function calcCosts(
     else mat += bq * (found.cost || 0);
   }
 
-  // Direct labor
+  // Direct labor (per-op rates)
   let dlRun = 0, dlLine = 0, dlOrder = 0, dlEquip = 0;
   for (const op of state.directOps) {
     const ops = n(op.operators) || 1;
     const ct = n(op.cycleTimeSec) / 3600;
     const ls = n(op.lineSetupMin) / 60;
     const os = n(op.orderSetupMin) / 60;
-    dlRun += ct * shopRate * ops;
-    if (qpb > 0) dlLine += ls * shopRate * ops / qpb;
-    if (toq > 0) dlOrder += os * shopRate * ops / toq;
+    const rate = resolveDirectRate(state, op);
+    dlRun += ct * rate * ops;
+    if (qpb > 0) dlLine += ls * rate * ops / qpb;
+    if (toq > 0) dlOrder += os * rate * ops / toq;
     dlEquip += calcEquipCost(state, op, bki);
   }
   dlEquip += calcEquipCapexCosts(state, bki);
 
-  // Indirect labor
+  // Indirect labor (per-op rates)
   let ilRun = 0, ilLine = 0, ilOrder = 0;
   for (const op of state.indirectOps) {
-    if (tau > 0) ilRun += n(op.annualHours) * indirectRate / tau;
-    if (eau > 0) ilLine += n(op.lineSetupHrs) * bpy * indirectRate / eau;
+    const rate = resolveIndirectRate(state, op);
+    if (tau > 0) ilRun += n(op.annualHours) * rate / tau;
+    if (eau > 0) ilLine += n(op.lineSetupHrs) * bpy * rate / eau;
     // Correct: divide by toq (units/order); bpy cancels with totalAnnualUnits = toq * bpy
-    if (toq > 0) ilOrder += n(op.orderSetupHrs) * indirectRate / toq;
+    if (toq > 0) ilOrder += n(op.orderSetupHrs) * rate / toq;
   }
 
   // Subcontracts
@@ -484,6 +519,133 @@ export function getTaktInfo(state: AppState): TaktInfo | null {
     op => n(op.cycleTimeSec) > taktSec && n(op.cycleTimeSec) > 0
   );
   return { taktSec, maxTau, maxLabel, exceeding };
+}
+
+// ── Manufacturing summary ─────────────────────────────────────
+
+export interface DLHoursResult {
+  runHrsPerBuild: number;     // cycle time × operators × qty/build
+  lineSetupHrsPerBuild: number; // line setup hrs per build (once per FG)
+  orderSetupHrsPerBuild: number; // order setup hrs allocated to this FG
+  totalHrsPerBuild: number;
+  runHrsPerYear: number;
+  totalHrsPerYear: number;
+  setupPct: number;           // (line+order setup) / total hrs, 0–100
+}
+
+export function calcDLHours(state: AppState, fgi: number, bki: number): DLHoursResult | null {
+  const fg = state.finishedGoods[fgi];
+  if (!fg) return null;
+  const brk = state.breaks[bki];
+  if (!brk) return null;
+
+  const bpy = n(brk.buildsPerYear);
+  const eau = n((fg.breaks[bki] || {}).eau);
+  if (!bpy) return null;
+  const qpb = eau / bpy;
+  const toq = totalOrderQty(state, bki);
+
+  let runHrs = 0, lineHrs = 0, orderHrs = 0;
+  for (const op of state.directOps) {
+    const ops = n(op.operators) || 1;
+    const ct  = n(op.cycleTimeSec) / 3600;
+    const ls  = n(op.lineSetupMin) / 60;
+    const os  = n(op.orderSetupMin) / 60;
+    runHrs   += ct * ops * qpb;
+    lineHrs  += ls * ops;
+    if (toq > 0) orderHrs += os * ops * qpb / toq;
+  }
+
+  const totalHrsPerBuild = runHrs + lineHrs + orderHrs;
+  const totalHrsPerYear  = totalHrsPerBuild * bpy;
+  const setupHrs         = lineHrs + orderHrs;
+  const setupPct         = totalHrsPerBuild > 0 ? (setupHrs / totalHrsPerBuild) * 100 : 0;
+
+  return {
+    runHrsPerBuild: runHrs,
+    lineSetupHrsPerBuild: lineHrs,
+    orderSetupHrsPerBuild: orderHrs,
+    totalHrsPerBuild,
+    runHrsPerYear: runHrs * bpy,
+    totalHrsPerYear,
+    setupPct,
+  };
+}
+
+export interface ILHoursResult {
+  runHrsPerYear: number;
+  lineSetupHrsPerYear: number;
+  orderSetupHrsPerYear: number;
+  totalHrsPerYear: number;
+  setupPct: number;
+}
+
+export function calcILHours(state: AppState, bki: number): ILHoursResult {
+  const brk = state.breaks[bki];
+  const bpy = brk ? n(brk.buildsPerYear) : 0;
+  const nFGs = state.finishedGoods.length || 1;
+
+  let runHrs = 0, lineHrs = 0, orderHrs = 0;
+  for (const op of state.indirectOps) {
+    runHrs   += n(op.annualHours);
+    lineHrs  += n(op.lineSetupHrs) * bpy;
+    orderHrs += n(op.orderSetupHrs) * bpy;
+  }
+  // lineSetupHrs applies per FG per build — multiply by nFGs
+  lineHrs *= nFGs;
+
+  const total    = runHrs + lineHrs + orderHrs;
+  const setupPct = total > 0 ? ((lineHrs + orderHrs) / total) * 100 : 0;
+
+  return { runHrsPerYear: runHrs, lineSetupHrsPerYear: lineHrs, orderSetupHrsPerYear: orderHrs, totalHrsPerYear: total, setupPct };
+}
+
+export interface EquipUtilResult {
+  equipment: Equipment;
+  occupiedHrs: number;
+  utilPct: number;
+}
+
+export function calcEquipUtilization(state: AppState, bki: number): EquipUtilResult[] {
+  const wkHrs = n(state.settings.workingHoursPerYear) || 1;
+  const utilMap = buildEquipUtilMap(state, bki);
+  return Array.from(utilMap.entries())
+    .map(([eqId, util]) => {
+      const eq = state.equipment.find(e => e.id === eqId);
+      if (!eq) return null;
+      return { equipment: eq, occupiedHrs: util * wkHrs, utilPct: util * 100 };
+    })
+    .filter((x): x is EquipUtilResult => x !== null);
+}
+
+export interface TaktBreakInfo {
+  taktSec: number;
+  tau: number;
+  slowestOp: DirectOp | null;
+  slowestCycleSec: number;
+  taktExceeded: boolean;
+}
+
+export function getTaktBreakInfo(state: AppState, bki: number): TaktBreakInfo | null {
+  const tau = totalAnnualUnits(state, bki);
+  const wkHrs = n(state.settings.workingHoursPerYear);
+  if (!tau || !wkHrs) return null;
+  const taktSec = (wkHrs * 3600) / tau;
+
+  let slowestOp: DirectOp | null = null;
+  let slowestCycleSec = 0;
+  for (const op of state.directOps) {
+    const ct = n(op.cycleTimeSec);
+    if (ct > slowestCycleSec) { slowestCycleSec = ct; slowestOp = op; }
+  }
+
+  return {
+    taktSec,
+    tau,
+    slowestOp,
+    slowestCycleSec,
+    taktExceeded: slowestCycleSec > taktSec && slowestCycleSec > 0,
+  };
 }
 
 // ── Mix autofill ──────────────────────────────────────────────

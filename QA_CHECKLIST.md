@@ -57,18 +57,21 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 
 | # | Action | Expected | Pass/Fail |
 |---|--------|----------|-----------|
-| 4.1 | Fill in Name, Customer, Date, Revision | All fields save and reload correctly | |
+| 4.1 | Fill in Name, Customer, Date | All fields save and reload correctly | |
 | 4.2 | Paste a screenshot image into the Notes area | Image renders inline in the notes editor | |
 | 4.3 | Reload the page and reopen the quote | Image still present in notes | |
 | 4.4 | Export the quote, edit the JSON to set `quote.notes` to `<script>alert(1)</script>`, import it | No alert fires; notes field is empty or stripped | |
-| 4.5 | Add 3 volume breaks | All 3 appear in the Breaks section with editable labels and EAU fields | |
-| 4.6 | Delete a volume break | Break removed; Summary tab reflects the change | |
-| 4.7 | Open Quote Info tab on a quote that has BOM items with material costs entered | Quote Review card appears below the two info cards | |
-| 4.8 | Quote Review with no library data yet (fresh org) | "No library data yet" empty state shown; no crash | |
-| 4.9 | Save a quote with BOM items and material costs, then open another quote with the same part numbers at different prices | Quote Review shows red/green findings with correct quote vs. library values | |
-| 4.10 | Click **← Use Library** on a single finding | That line's quote value updates to the library value; Undo reverts it | |
-| 4.11 | Click **← Update All from Library** | All findings applied at once; header summary clears; Undo reverts all | |
-| 4.12 | After updating all, the Quote Review card shows | "✓ All library prices match the quote." | |
+| 4.5 | Add a **Revision Note** (e.g., "Initial pricing") | Text appears in the field | |
+| 4.6 | Click **Save Revision**, then make any edit | Revision Note field clears on the first edit after the save | |
+| 4.7 | Open the revision selector in the Quotes List | Revision Note is shown next to the revision number | |
+| 4.8 | Add volume breaks (on Finished Goods tab) | All breaks appear in Breaks section | |
+| 4.9 | Open Quote Info tab on a quote that has BOM items with material costs entered | Quote Review card appears below the info cards | |
+| 4.10 | Quote Review with no library data yet (fresh org) | "No library data yet" empty state shown; no crash | |
+| 4.11 | Click **← Use Library** on a single finding | That line's quote value updates to the library value; Undo reverts it | |
+| 4.12 | Click **← Update All from Library** | All findings applied at once; Undo reverts all | |
+| 4.13 | Add a Labor Rate ("Shop Rate", $50/hr) | Rate appears in the list on Quote Info; no shopRate input visible | |
+| 4.14 | Add a second Labor Rate | Both rates visible; each has name and rate fields | |
+| 4.15 | Delete a Labor Rate that is assigned to an op | Rate removed; that op's rateId is cleared (falls back to settings default) | |
 
 ---
 
@@ -94,6 +97,9 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 6.4 | Check **Customer Supplied** on an item | Item shows as customer-supplied; material cost excluded from Summary | |
 | 6.5 | Drag rows to reorder | New order persists on reload | |
 | 6.6 | Delete an item | Row removed immediately | |
+| 6.7 | Type a part number that matches a library part | Dropdown shows "From library" section with matching parts | |
+| 6.8 | Select a library part | Part number, description, and UOM pre-filled from library data | |
+| 6.9 | Type a part number that matches an existing BOM item | "From this quote" section shows the match | |
 
 ---
 
@@ -116,6 +122,8 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 8.2 | Enter CapEx ($50,000), Hourly Run Cost, Annual Maintenance | Fields save on blur | |
 | 8.3 | Check **Project-Specific** | Equipment cost calculated differently (full CapEx / TAU instead of utilization-based) | |
 | 8.4 | Delete equipment | Row removed; any ops that referenced it no longer list it | |
+| 8.5 | When library equipment exists (added via another quote), "From library" chips appear above the table | Chips show equipment not yet in this quote | |
+| 8.6 | Click a library chip | Equipment copied into quote with library capex/run/maintenance values | |
 
 ---
 
@@ -123,11 +131,15 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 
 | # | Action | Expected | Pass/Fail |
 |---|--------|----------|-----------|
-| 9.1 | Add a **Direct Op** | New row with Operators, Cycle Time, Order Setup, Line Setup fields | |
-| 9.2 | Assign equipment to the direct op via the dropdown | Equipment chip appears on the row | |
-| 9.3 | Add an **Indirect Op** with annual hours | Appears in Indirect section | |
-| 9.4 | Add a **Subcontract** with price-each and price-per-order | Appears in Subcontracts section | |
-| 9.5 | Delete one of each type | Rows removed; Summary updates | |
+| 9.1 | Add a **Direct Op** | New row with Rate, Operators, Cycle Time, Order Setup, Line Setup, Equipment fields | |
+| 9.2 | Assign a labor rate to the direct op via the Rate dropdown | Rate name appears; Summary uses that op's rate | |
+| 9.3 | Assign equipment to the direct op via the Equipment dropdown | Equipment chip appears on the row | |
+| 9.4 | Select library equipment in Equipment dropdown | "From library" section appears; selecting copies equipment into quote | |
+| 9.5 | Select library rate in Rate dropdown | Rate copied into quote's labor rates list; op now uses it | |
+| 9.6 | Add an **Indirect Op** with annual hours and assign a rate | Rate shown; IL cost in Summary uses that rate | |
+| 9.7 | Add a **Subcontract** with price-each and price-per-order | Appears in Subcontracts section | |
+| 9.8 | Delete one of each type | Rows removed; Summary updates | |
+| 9.9 | Warning shown when no labor rates defined | "No labor rates defined" banner appears in Direct Labor and Indirect sections | |
 
 ---
 
@@ -160,7 +172,7 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 
 ---
 
-## 12. Undo
+## 12. Undo / Redo
 
 | # | Action | Expected | Pass/Fail |
 |---|--------|----------|-----------|
@@ -170,6 +182,10 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 | 12.4 | Import a quote, click Undo | Previous quote state restored | |
 | 12.5 | Create a new quote, click Undo | Previous quote state restored | |
 | 12.6 | Make 45 edits (beyond 40-state limit) | No crash; oldest history entries silently dropped | |
+| 12.7 | Make an edit, Undo, then click **Redo** | Edit is re-applied | |
+| 12.8 | Redo button disabled after a new edit | Making any edit clears redo history; Redo button greys out | |
+| 12.9 | Make edit on Operations tab, switch to Summary tab, Undo/Redo repeatedly | Stays on Summary tab; Summary shows the correct before/after state | |
+| 12.10 | Make 5 edits, Undo 5 times, Redo 5 times | Returns to latest state | |
 
 ---
 
@@ -218,15 +234,28 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 
 ---
 
-## 16. Edge Cases & Stability
+## 16. Mfg Summary Tab
 
 | # | Action | Expected | Pass/Fail |
 |---|--------|----------|-----------|
-| 16.1 | Log in; watch the initial page load carefully | No "No organization found" error screen flashes before quotes list appears | |
-| 16.2 | Open a quote, edit it, then rapidly click between all 7 tabs | No crashes, no blank tabs, no stale data | |
-| 16.3 | Open a quote on mobile viewport (375 px wide) | Tabs scroll horizontally; no horizontal overflow on content | |
-| 16.4 | Leave the app idle for 15+ minutes, then make an edit | Edit saves successfully (session still valid) | |
-| 16.5 | Open the same quote in two browser tabs, edit in one | Other tab shows stale data (expected); no data corruption | |
+| 16.1 | Open **Mfg Summary** tab with a fully-filled quote | Takt/cycle, equipment utilization, DL hours per FG per break, IL hours visible | |
+| 16.2 | Equipment utilization exceeds 100% | Value shown in red with ⚠ indicator | |
+| 16.3 | Slowest cycle exceeds takt time | Value shown in red with ⚠ indicator | |
+| 16.4 | Slowest cycle is within takt | Value shown in green with ✓ indicator | |
+| 16.5 | Quote with no operations | Sections show "No direct/indirect operations defined" | |
+| 16.6 | DL setup % — verify with a quote where all time is setup | Shows 100% setup | |
+
+---
+
+## 17. Edge Cases & Stability
+
+| # | Action | Expected | Pass/Fail |
+|---|--------|----------|-----------|
+| 17.1 | Log in; watch the initial page load carefully | No "No organization found" error screen flashes before quotes list appears | |
+| 17.2 | Open a quote, edit it, then rapidly click between all 8 tabs | No crashes, no blank tabs, no stale data | |
+| 17.3 | Open a quote on mobile viewport (375 px wide) | Tabs scroll horizontally; no horizontal overflow on content | |
+| 17.4 | Leave the app idle for 15+ minutes, then make an edit | Edit saves successfully (session still valid) | |
+| 17.5 | Open the same quote in two browser tabs, edit in one | Other tab shows stale data (expected); no data corruption | |
 | 16.6 | Create a quote with 10 FGs, 20 BOM items, 5 ops | No performance degradation; Summary calculates without visible lag | |
 | 16.7 | Check browser console after a normal session | No unhandled errors or warnings in console | |
 

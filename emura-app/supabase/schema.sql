@@ -246,9 +246,26 @@ create table if not exists equipment_library (
 alter table public.equipment_library add column if not exists source_quote_id uuid references public.quotes(id) on delete set null;
 alter table public.equipment_library add column if not exists locked boolean not null default false;
 
-alter table parts             enable row level security;
-alter table part_prices       enable row level security;
-alter table equipment_library enable row level security;
+-- Org-wide labor rate reference library
+create table if not exists labor_rate_library (
+  id               uuid primary key default gen_random_uuid(),
+  org_id           uuid references organizations on delete cascade not null,
+  name             text not null,
+  rate             numeric not null default 0,
+  source_quote_id  uuid references public.quotes(id) on delete set null,
+  locked           boolean not null default false,
+  created_at       timestamptz default now(),
+  updated_at       timestamptz default now(),
+  unique (org_id, name)
+);
+
+-- Rev note column for revision display in quote selector
+alter table public.quote_revisions add column if not exists rev_note text not null default '';
+
+alter table parts               enable row level security;
+alter table part_prices         enable row level security;
+alter table equipment_library   enable row level security;
+alter table labor_rate_library  enable row level security;
 
 do $$ begin
   if not exists (select 1 from pg_policies where tablename='parts' and policyname='parts_select') then
@@ -282,6 +299,14 @@ do $$ begin
   if not exists (select 1 from pg_policies where tablename='equipment_library' and policyname='eqlib_write') then
     create policy "eqlib_write" on equipment_library for all
       using (exists (select 1 from org_members where org_id = equipment_library.org_id and user_id = auth.uid() and role in ('admin','estimator')));
+  end if;
+  if not exists (select 1 from pg_policies where tablename='labor_rate_library' and policyname='lrlib_select') then
+    create policy "lrlib_select" on labor_rate_library for select
+      using (exists (select 1 from org_members where org_id = labor_rate_library.org_id and user_id = auth.uid()));
+  end if;
+  if not exists (select 1 from pg_policies where tablename='labor_rate_library' and policyname='lrlib_write') then
+    create policy "lrlib_write" on labor_rate_library for all
+      using (exists (select 1 from org_members where org_id = labor_rate_library.org_id and user_id = auth.uid() and role in ('admin','estimator')));
   end if;
 end $$;
 

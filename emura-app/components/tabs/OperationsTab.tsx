@@ -3,7 +3,8 @@
 import { useDragSort } from '@/hooks/useDragSort';
 import InfoIcon from '@/components/InfoIcon';
 import EquipmentSelector from '@/components/EquipmentSelector';
-import type { AppState, DirectOp, IndirectOp, Subcontract } from '@/lib/calculations';
+import LaborRateSelector from '@/components/LaborRateSelector';
+import type { AppState, DirectOp, IndirectOp, Subcontract, LaborRate, LibraryLaborRate } from '@/lib/calculations';
 import { getTaktInfo } from '@/lib/calculations';
 import { uid } from '@/lib/state';
 
@@ -11,13 +12,14 @@ interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
   resetKey?: number;
+  libraryLaborRates?: LibraryLaborRate[];
 }
 
 function fmtN(n: number, d = 0) {
   return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
-export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) {
+export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLaborRates = [] }: Props) {
   const dlSort  = useDragSort(state.directOps,   ops  => onUpdate({ ...state, directOps: ops }));
   const subSort = useDragSort(state.subcontracts, subs => onUpdate({ ...state, subcontracts: subs }));
   const ilSort  = useDragSort(state.indirectOps,  ops  => onUpdate({ ...state, indirectOps: ops }));
@@ -57,10 +59,23 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
     onUpdate({ ...state, indirectOps: ops });
   }
   function addIL() {
-    onUpdate({ ...state, indirectOps: [...state.indirectOps, { id: uid(), name: '', annualHours: 0, orderSetupHrs: 0, lineSetupHrs: 0, notes: '' }] });
+    onUpdate({ ...state, indirectOps: [...state.indirectOps, { id: uid(), name: '', annualHours: 0, orderSetupHrs: 0, lineSetupHrs: 0, notes: '', rateId: '' }] });
   }
   function deleteIL(i: number) {
     onUpdate({ ...state, indirectOps: state.indirectOps.filter((_, idx) => idx !== i) });
+  }
+
+  // ── Labor rate helpers ──────────────────────────────────────
+  function createRate(name: string, rate = 0): string {
+    const newRate: LaborRate = { id: uid(), name, rate };
+    onUpdate({ ...state, laborRates: [...(state.laborRates ?? []), newRate] });
+    return newRate.id;
+  }
+
+  function copyRateFromLibrary(lr: LibraryLaborRate): string {
+    const newRate: LaborRate = { id: uid(), name: lr.name, rate: lr.rate };
+    onUpdate({ ...state, laborRates: [...(state.laborRates ?? []), newRate] });
+    return newRate.id;
   }
 
   // ── Takt notice ─────────────────────────────────────────────
@@ -94,9 +109,9 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
           <button className="btn btn-add btn-sm" onClick={addDL}>+ Add Operation</button>
         </div>
         <div className="card-body">
-          <div className="inline-info">
-            Shop Rate: <b>${state.settings.shopRate}/hr</b>. Equipment utilization includes cycle time + both setup types.
-          </div>
+          {(state.laborRates ?? []).length === 0 && (
+            <div className="inline-warn">No labor rates defined — operations will cost $0. Add rates on the Quote Info tab.</div>
+          )}
           {taktEl}
           {state.directOps.length === 0 && <p className="empty-msg">No direct labor operations.</p>}
           {state.directOps.length > 0 && (
@@ -105,6 +120,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
                 <thead><tr>
                   <th></th>
                   <th className="op-name">Operation <InfoIcon k="dlName" /></th>
+                  <th>Rate <InfoIcon k="shopRate" /></th>
                   <th>Operators <InfoIcon k="dlOps" /></th>
                   <th>Cycle Time<br />(sec) <InfoIcon k="dlCt" /></th>
                   <th>Order Setup<br />(min) <InfoIcon k="dlOs" /></th>
@@ -118,6 +134,22 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
                     <tr key={op.id} {...dlSort.dragProps(i)} className={dlSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
                       <td className="op-name"><input type="text" value={op.name ?? ''} onChange={e => setDL(i, { name: e.target.value })} /></td>
+                      <td style={{ minWidth: 130 }}>
+                        <LaborRateSelector
+                          selectedId={op.rateId ?? ''}
+                          rates={state.laborRates ?? []}
+                          libraryRates={libraryLaborRates}
+                          onChange={rateId => setDL(i, { rateId })}
+                          onCreateRate={(name, rate) => {
+                            const id = createRate(name, rate);
+                            return id;
+                          }}
+                          onCopyFromLibrary={lr => {
+                            const id = copyRateFromLibrary(lr);
+                            return id;
+                          }}
+                        />
+                      </td>
                       <td><input type="number" min={0.1} step="any" style={{ maxWidth: 50 }} key={op.id + '-ops-' + resetKey} defaultValue={op.operators ?? 1} onBlur={e => setDL(i, { operators: parseFloat(e.target.value) || 1 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.cycleTimeSec || ''} onChange={e => setDL(i, { cycleTimeSec: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.orderSetupMin || ''} onChange={e => setDL(i, { orderSetupMin: parseFloat(e.target.value) || 0 })} /></td>
@@ -131,6 +163,16 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
                             const newId = uid();
                             const newEq = { id: newId, name, capex: 0, hourlyRunCost: 0, annualMaintenance: 0, projectSpecific: false };
                             onUpdate({ ...state, equipment: [...state.equipment, newEq], directOps: state.directOps.map((o, idx) => idx === i ? { ...o, equipmentIds: [...(o.equipmentIds || []), newId] } : o) });
+                          }}
+                          onCopyFromLibrary={le => {
+                            const existing = state.equipment.find(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase());
+                            const eqId = existing?.id ?? uid();
+                            if (!existing) {
+                              const newEq = { id: eqId, name: le.name, capex: le.capex, hourlyRunCost: le.hourlyRunCost, annualMaintenance: le.annualMaintenance, projectSpecific: false };
+                              onUpdate({ ...state, equipment: [...state.equipment, newEq], directOps: state.directOps.map((o, idx) => idx === i ? { ...o, equipmentIds: [...(o.equipmentIds || []), eqId] } : o) });
+                            } else {
+                              setDL(i, { equipmentIds: [...(op.equipmentIds || []), eqId] });
+                            }
                           }}
                         />
                       </td>
@@ -203,7 +245,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
         </div>
         <div className="card-body">
           <div className="inline-info">
-            Indirect Rate: <b>${state.settings.indirectRate}/hr</b>. Annual Hrs spread over all units. Setup hours are per event.
+            Annual Hrs spread over all units. Setup hours are per event.
           </div>
           {state.indirectOps.length === 0 && <p className="empty-msg">No indirect labor categories.</p>}
           {state.indirectOps.length > 0 && (
@@ -212,6 +254,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
                 <thead><tr>
                   <th></th>
                   <th className="op-name">Category <InfoIcon k="ilName" /></th>
+                  <th>Rate <InfoIcon k="indRate" /></th>
                   <th>Annual Hrs <InfoIcon k="ilAh" /></th>
                   <th>Order Setup (hrs) <InfoIcon k="ilOs" /></th>
                   <th>Line Setup (hrs) <InfoIcon k="ilLs" /></th>
@@ -223,6 +266,16 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0 }: Props) 
                     <tr key={op.id} {...ilSort.dragProps(i)} className={ilSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
                       <td className="op-name"><input type="text" value={op.name ?? ''} onChange={e => setIL(i, { name: e.target.value })} /></td>
+                      <td style={{ minWidth: 130 }}>
+                        <LaborRateSelector
+                          selectedId={op.rateId ?? ''}
+                          rates={state.laborRates ?? []}
+                          libraryRates={libraryLaborRates}
+                          onChange={rateId => setIL(i, { rateId })}
+                          onCreateRate={(name, rate) => createRate(name, rate)}
+                          onCopyFromLibrary={lr => copyRateFromLibrary(lr)}
+                        />
+                      </td>
                       <td><input type="number" min={0} step="any" value={op.annualHours || ''} onChange={e => setIL(i, { annualHours: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.orderSetupHrs || ''} onChange={e => setIL(i, { orderSetupHrs: parseFloat(e.target.value) || 0 })} /></td>
                       <td><input type="number" min={0} step="any" value={op.lineSetupHrs || ''} onChange={e => setIL(i, { lineSetupHrs: parseFloat(e.target.value) || 0 })} /></td>

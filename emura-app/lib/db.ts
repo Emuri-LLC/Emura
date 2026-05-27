@@ -16,6 +16,7 @@ export interface QuoteRevision {
   revNumber: number;
   createdAt: string;
   createdBy: string;
+  revNote:   string; // state.quote.revision at time of save
 }
 
 export interface QuoteSummary {
@@ -83,7 +84,7 @@ export async function getMyOrgContext(supabase: SupabaseClient): Promise<OrgCont
 export async function listQuotes(supabase: SupabaseClient): Promise<QuoteSummary[]> {
   const { data, error } = await supabase
     .from('quotes')
-    .select('id, name, customer, updated_at, created_by, last_updated_by, quote_number, quote_revisions(id, rev_number, created_at, created_by)')
+    .select('id, name, customer, updated_at, created_by, last_updated_by, quote_number, quote_revisions(id, rev_number, created_at, created_by, rev_note)')
     .order('updated_at', { ascending: false });
 
   if (error || !data) return [];
@@ -93,10 +94,10 @@ export async function listQuotes(supabase: SupabaseClient): Promise<QuoteSummary
       id: string; name: string; customer: string; updated_at: string;
       created_by: string | null; last_updated_by: string | null;
       quote_number: number | null;
-      quote_revisions: Array<{ id: string; rev_number: number; created_at: string; created_by: string | null }>;
+      quote_revisions: Array<{ id: string; rev_number: number; created_at: string; created_by: string | null; rev_note: string | null }>;
     };
     const revisions: QuoteRevision[] = (raw.quote_revisions ?? [])
-      .map(rv => ({ id: rv.id, revNumber: rv.rev_number, createdAt: rv.created_at, createdBy: rv.created_by ?? '' }))
+      .map(rv => ({ id: rv.id, revNumber: rv.rev_number, createdAt: rv.created_at, createdBy: rv.created_by ?? '', revNote: rv.rev_note ?? '' }))
       .sort((a, b) => b.revNumber - a.revNumber);
     return {
       id:            raw.id,
@@ -189,13 +190,14 @@ export async function saveRevision(
       rev_number: nextNum,
       state:      state as unknown as Record<string, unknown>,
       created_by: user.id,
+      rev_note:   state.quote.revision ?? '',
     })
-    .select('id, rev_number, created_at, created_by')
+    .select('id, rev_number, created_at, created_by, rev_note')
     .single();
 
   if (error || !data) return null;
-  const r = data as unknown as { id: string; rev_number: number; created_at: string; created_by: string | null };
-  return { id: r.id, revNumber: r.rev_number, createdAt: r.created_at, createdBy: r.created_by ?? '' };
+  const r = data as unknown as { id: string; rev_number: number; created_at: string; created_by: string | null; rev_note: string | null };
+  return { id: r.id, revNumber: r.rev_number, createdAt: r.created_at, createdBy: r.created_by ?? '', revNote: r.rev_note ?? '' };
 }
 
 export async function loadQuoteRevision(
@@ -443,6 +445,69 @@ export async function listLibraryEquipment(supabase: SupabaseClient): Promise<Li
     annualMaintenance: r.annual_maintenance,
     locked:            r.locked ?? false,
   }));
+}
+
+// ── Labor Rate Library ────────────────────────────────────────
+
+export async function listLibraryLaborRates(supabase: SupabaseClient): Promise<import('./calculations').LibraryLaborRate[]> {
+  const { data, error } = await supabase
+    .from('labor_rate_library')
+    .select('id, name, rate, locked')
+    .order('name');
+  if (error || !data) return [];
+  return (data as { id: string; name: string; rate: number; locked: boolean }[]).map(r => ({
+    id: r.id, name: r.name, rate: r.rate, locked: r.locked ?? false,
+  }));
+}
+
+export async function syncLaborRatesToLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  quoteId: string,
+  state: import('./calculations').AppState,
+): Promise<void> {
+  const named = (state.laborRates ?? []).filter(r => r.name.trim());
+  if (!named.length) return;
+
+  for (const lr of named) {
+    const name = lr.name.trim();
+    const { data: existing } = await supabase
+      .from('labor_rate_library')
+      .select('id, source_quote_id, locked')
+      .eq('org_id', orgId)
+      .eq('name', name)
+      .maybeSingle();
+
+    if (existing?.locked) continue;
+
+    if (existing?.source_quote_id && existing.source_quote_id !== quoteId) {
+      await supabase.from('labor_rate_library').update({ locked: true }).eq('id', existing.id);
+      continue;
+    }
+
+    const { error } = await supabase
+      .from('labor_rate_library')
+      .upsert(
+        { org_id: orgId, name, rate: lr.rate, source_quote_id: quoteId, locked: false, updated_at: new Date().toISOString() },
+        { onConflict: 'org_id,name' },
+      );
+    if (error) console.error('[library] laborRate upsert failed:', error.message);
+  }
+}
+
+export async function pushLaborRateToLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  name: string,
+  rate: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from('labor_rate_library')
+    .upsert(
+      { org_id: orgId, name: name.trim(), rate, updated_at: new Date().toISOString() },
+      { onConflict: 'org_id,name' },
+    );
+  if (error) console.error('[library] pushLaborRate failed:', error.message);
 }
 
 // ── Org management ────────────────────────────────────────────
