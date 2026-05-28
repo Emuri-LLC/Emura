@@ -45,7 +45,7 @@ export interface Department {
 export interface OrgMember {
   id:           string;
   userId:       string;
-  email:        string;
+  email:        string; // resolved via get_org_member_emails RPC inside listMembers
   role:         'admin' | 'estimator' | 'viewer';
   departmentId: string | null;
 }
@@ -223,6 +223,10 @@ export async function deleteQuote(supabase: SupabaseClient, id: string): Promise
 // Upserts all non-customer-supplied BOM items (and their cost entries) from a
 // saved quote into the org parts library. Skips items already used in another
 // quote (they are "locked" to prevent accidental overwrites).
+//
+// N+1 elimination: ONE SELECT fetches all existing rows up-front; ONE bulk UPDATE
+// marks cross-quote items as locked. Per-item upserts remain (needed to get the
+// returned part ID for price tier upserts).
 export async function syncPartsToLibrary(
   supabase: SupabaseClient,
   orgId: string,
@@ -234,22 +238,44 @@ export async function syncPartsToLibrary(
   );
   if (!costable.length) return;
 
+  const partNumbers = costable.map(item => item.partNumber.trim());
+
+  // ONE query to fetch all existing rows for the parts we care about
+  const { data: existingRows } = await supabase
+    .from('parts')
+    .select('id, part_number, source_quote_id, locked')
+    .eq('org_id', orgId)
+    .in('part_number', partNumbers);
+
+  type ExistingRow = { id: string; part_number: string; source_quote_id: string | null; locked: boolean };
+  const existingMap = new Map<string, ExistingRow>(
+    ((existingRows ?? []) as ExistingRow[]).map(r => [r.part_number, r]),
+  );
+
+  // Collect IDs that need to be locked in bulk (different source, not already locked)
+  const lockIds: string[] = [];
   for (const item of costable) {
     const pn = item.partNumber.trim();
-
-    const { data: existing } = await supabase
-      .from('parts')
-      .select('id, source_quote_id, locked')
-      .eq('org_id', orgId)
-      .eq('part_number', pn)
-      .maybeSingle();
-
-    if (existing?.locked) continue;
-
-    if (existing?.source_quote_id && existing.source_quote_id !== quoteId) {
-      await supabase.from('parts').update({ locked: true }).eq('id', existing.id);
-      continue;
+    const existing = existingMap.get(pn);
+    if (existing && !existing.locked && existing.source_quote_id && existing.source_quote_id !== quoteId) {
+      lockIds.push(existing.id);
     }
+  }
+
+  // ONE bulk UPDATE for all rows that need to be locked
+  if (lockIds.length) {
+    await supabase.from('parts').update({ locked: true }).in('id', lockIds);
+  }
+
+  const lockIdSet = new Set(lockIds);
+
+  for (const item of costable) {
+    const pn = item.partNumber.trim();
+    const existing = existingMap.get(pn);
+
+    // Skip if already locked or just marked for locking (different source)
+    if (existing?.locked) continue;
+    if (lockIdSet.has(existing?.id ?? '')) continue;
 
     const { data: partRow, error: partErr } = await supabase
       .from('parts')
@@ -292,6 +318,9 @@ export async function syncPartsToLibrary(
 
 // Upserts equipment from a quote into the org equipment library. Skips
 // equipment already used in another quote (locked).
+//
+// N+1 elimination: ONE SELECT fetches all existing rows up-front; ONE bulk UPDATE
+// marks cross-quote items as locked.
 export async function syncEquipmentToLibrary(
   supabase: SupabaseClient,
   orgId: string,
@@ -301,22 +330,43 @@ export async function syncEquipmentToLibrary(
   const named = state.equipment.filter(eq => eq.name.trim());
   if (!named.length) return;
 
+  const names = named.map(eq => eq.name.trim());
+
+  // ONE query to fetch all existing rows for the equipment we care about
+  const { data: existingRows } = await supabase
+    .from('equipment_library')
+    .select('id, name, source_quote_id, locked')
+    .eq('org_id', orgId)
+    .in('name', names);
+
+  type ExistingEqRow = { id: string; name: string; source_quote_id: string | null; locked: boolean };
+  const existingMap = new Map<string, ExistingEqRow>(
+    ((existingRows ?? []) as ExistingEqRow[]).map(r => [r.name, r]),
+  );
+
+  // Collect IDs that need to be locked in bulk
+  const lockIds: string[] = [];
   for (const eq of named) {
     const name = eq.name.trim();
+    const existing = existingMap.get(name);
+    if (existing && !existing.locked && existing.source_quote_id && existing.source_quote_id !== quoteId) {
+      lockIds.push(existing.id);
+    }
+  }
 
-    const { data: existing } = await supabase
-      .from('equipment_library')
-      .select('id, source_quote_id, locked')
-      .eq('org_id', orgId)
-      .eq('name', name)
-      .maybeSingle();
+  // ONE bulk UPDATE for all rows that need to be locked
+  if (lockIds.length) {
+    await supabase.from('equipment_library').update({ locked: true }).in('id', lockIds);
+  }
+
+  const lockIdSet = new Set(lockIds);
+
+  for (const eq of named) {
+    const name = eq.name.trim();
+    const existing = existingMap.get(name);
 
     if (existing?.locked) continue;
-
-    if (existing?.source_quote_id && existing.source_quote_id !== quoteId) {
-      await supabase.from('equipment_library').update({ locked: true }).eq('id', existing.id);
-      continue;
-    }
+    if (lockIdSet.has(existing?.id ?? '')) continue;
 
     const { error } = await supabase
       .from('equipment_library')
@@ -460,6 +510,8 @@ export async function listLibraryLaborRates(supabase: SupabaseClient): Promise<i
   }));
 }
 
+// N+1 elimination: ONE SELECT fetches all existing rows up-front; ONE bulk UPDATE
+// marks cross-quote items as locked.
 export async function syncLaborRatesToLibrary(
   supabase: SupabaseClient,
   orgId: string,
@@ -469,21 +521,43 @@ export async function syncLaborRatesToLibrary(
   const named = (state.laborRates ?? []).filter(r => r.name.trim());
   if (!named.length) return;
 
+  const names = named.map(lr => lr.name.trim());
+
+  // ONE query to fetch all existing rows for the rates we care about
+  const { data: existingRows } = await supabase
+    .from('labor_rate_library')
+    .select('id, name, source_quote_id, locked')
+    .eq('org_id', orgId)
+    .in('name', names);
+
+  type ExistingRateRow = { id: string; name: string; source_quote_id: string | null; locked: boolean };
+  const existingMap = new Map<string, ExistingRateRow>(
+    ((existingRows ?? []) as ExistingRateRow[]).map(r => [r.name, r]),
+  );
+
+  // Collect IDs that need to be locked in bulk
+  const lockIds: string[] = [];
   for (const lr of named) {
     const name = lr.name.trim();
-    const { data: existing } = await supabase
-      .from('labor_rate_library')
-      .select('id, source_quote_id, locked')
-      .eq('org_id', orgId)
-      .eq('name', name)
-      .maybeSingle();
+    const existing = existingMap.get(name);
+    if (existing && !existing.locked && existing.source_quote_id && existing.source_quote_id !== quoteId) {
+      lockIds.push(existing.id);
+    }
+  }
+
+  // ONE bulk UPDATE for all rows that need to be locked
+  if (lockIds.length) {
+    await supabase.from('labor_rate_library').update({ locked: true }).in('id', lockIds);
+  }
+
+  const lockIdSet = new Set(lockIds);
+
+  for (const lr of named) {
+    const name = lr.name.trim();
+    const existing = existingMap.get(name);
 
     if (existing?.locked) continue;
-
-    if (existing?.source_quote_id && existing.source_quote_id !== quoteId) {
-      await supabase.from('labor_rate_library').update({ locked: true }).eq('id', existing.id);
-      continue;
-    }
+    if (lockIdSet.has(existing?.id ?? '')) continue;
 
     const { error } = await supabase
       .from('labor_rate_library')
@@ -568,19 +642,30 @@ export async function deleteDepartment(supabase: SupabaseClient, id: string): Pr
   await supabase.from('departments').delete().eq('id', id);
 }
 
+// Returns org members with emails resolved via the get_org_member_emails
+// security-definer RPC (which can access auth.users). Falls back to a
+// truncated userId if the RPC returns no entry for a given user.
 export async function listMembers(supabase: SupabaseClient, orgId: string): Promise<OrgMember[]> {
-  // Join org_members with auth.users via a view — Supabase exposes user email
-  // through the auth schema only to service role, so we store email at invite time.
-  // For existing members use org_invites.email where accepted; fallback to user id display.
-  const { data } = await supabase
-    .from('org_members')
-    .select('id, user_id, role, department_id')
-    .eq('org_id', orgId)
-    .order('created_at');
-  return (data ?? []).map(r => ({
+  const [membersResult, emailsResult] = await Promise.all([
+    supabase
+      .from('org_members')
+      .select('id, user_id, role, department_id')
+      .eq('org_id', orgId)
+      .order('created_at'),
+    supabase.rpc('get_org_member_emails', { p_org_id: orgId }),
+  ]);
+
+  const emailMap: Record<string, string> = {};
+  if (emailsResult.data) {
+    (emailsResult.data as { user_id: string; email: string }[]).forEach(r => {
+      emailMap[r.user_id] = r.email;
+    });
+  }
+
+  return (membersResult.data ?? []).map(r => ({
     id:           r.id,
     userId:       r.user_id,
-    email:        r.user_id, // resolved to email in AdminDrawer via separate query
+    email:        emailMap[r.user_id] ?? r.user_id,
     role:         r.role as OrgMember['role'],
     departmentId: r.department_id,
   }));

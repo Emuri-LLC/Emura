@@ -156,7 +156,7 @@ export interface ReviewItem {
 
 // Returns the best applicable library price for a given annual qty:
 // the highest min_qty tier that does not exceed annualQty.
-function applicablePrice(prices: LibraryPartPrice[], annualQty: number): LibraryPartPrice | null {
+export function applicablePrice(prices: LibraryPartPrice[], annualQty: number): LibraryPartPrice | null {
   const candidates = prices.filter(p => p.minQty <= annualQty);
   if (!candidates.length) return null;
   return candidates.reduce((best, p) => p.minQty > best.minQty ? p : best);
@@ -742,20 +742,3 @@ export function getTaktBreakInfo(state: AppState, bki: number): TaktBreakInfo | 
   };
 }
 
-// ── Mix autofill ──────────────────────────────────────────────
-
-export function applyMixToBreak(
-  state: AppState,
-  srcBki: number,
-  dstBki: number
-): void {
-  const srcTotal = totalAnnualUnits(state, srcBki);
-  if (!srcTotal) return;
-  const dstTotal = n(state.breaks[dstBki].totalEAU);
-  if (!dstTotal) return;
-  state.finishedGoods.forEach(fg => {
-    const pct = n((fg.breaks[srcBki] || {}).eau) / srcTotal;
-    while (fg.breaks.length <= dstBki) fg.breaks.push({});
-    fg.breaks[dstBki] = { eau: Math.round(pct * dstTotal) };
-  });
-}

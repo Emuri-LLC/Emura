@@ -3,15 +3,12 @@
 import type { AppState, BOMItem } from '@/lib/calculations';
 import { annualPurchQty, findCost, setCost } from '@/lib/calculations';
 import InfoIcon from '@/components/InfoIcon';
+import { fmtN } from '@/lib/format';
 
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
   resetKey?: number;
-}
-
-function fmtN(n: number) {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Props) {

@@ -1,18 +1,14 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { AppState } from '@/lib/calculations';
 import { calcCosts, totalOrderQty, totalAnnualUnits } from '@/lib/calculations';
+import { fmt4, fmtC, fmtN } from '@/lib/format';
 
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
 }
-
-function fmt4(n: number) { return isNaN(n) ? '—' : n.toFixed(4); }
-function fmtC(n: number, d = 2) {
-  return isNaN(n) ? '—' : '$' + n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
-}
-function fmtN(n: number) { return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 
 const CATS: [string, string, boolean][] = [
   ['Material',       'mat',      false],
@@ -31,6 +27,12 @@ const CATS: [string, string, boolean][] = [
 export default function SummaryTab({ state, onUpdate }: Props) {
   const fgs  = state.finishedGoods;
   const brks = state.breaks;
+
+  const costsMatrix = useMemo(() =>
+    state.finishedGoods.map((_, fi) =>
+      state.breaks.map((_, j) => calcCosts(state, fi, j))
+    ),
+  [state]);
 
   if (!fgs.length || !brks.length) {
     return <div className="card"><div className="card-body"><p className="empty-msg">Add finished goods and volume breaks first.</p></div></div>;
@@ -67,7 +69,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
         <tr key={`${fg.id}-${key}`} className={isSub ? 'sub' : ''}>
           <td style={{ paddingLeft: isSub ? 20 : 9, color: isSub ? '#555' : undefined, fontSize: isSub ? 11.5 : undefined }}>{lbl}</td>
           {brks.map((_, j) => {
-            const c = calcCosts(state, fi, j);
+            const c = costsMatrix[fi][j];
             if (!c || c.eau === 0) return <td key={j} style={{ textAlign: 'right', color: '#aaa' }}>N/A</td>;
             const v = (c as unknown as Record<string, number>)[key];
             if (c.matIncomplete && key === 'mat') {
@@ -84,7 +86,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
       <tr key={`${fg.id}-tot`} className="tot">
         <td>TOTAL / UNIT</td>
         {brks.map((_, j) => {
-          const c = calcCosts(state, fi, j);
+          const c = costsMatrix[fi][j];
           if (!c || c.eau === 0) return <td key={j} style={{ textAlign: 'right' }}>N/A</td>;
           return <td key={j} style={{ textAlign: 'right', fontFamily: 'monospace' }} className={c.matIncomplete ? 'inc' : ''}>{fmtC(c.total, 4)}</td>;
         })}
@@ -96,7 +98,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
       <tr key={`${fg.id}-ann`} style={{ fontSize: 11.5, color: '#666', background: '#fafbfd' }}>
         <td>Annual cost (×EAU)</td>
         {brks.map((_, j) => {
-          const c = calcCosts(state, fi, j);
+          const c = costsMatrix[fi][j];
           if (!c || !c.eau) return <td key={j} style={{ textAlign: 'right', color: '#aaa' }}>—</td>;
           return <td key={j} style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmtC(c.total * c.eau, 0)}</td>;
         })}
@@ -128,7 +130,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
       <tr key={`${fg.id}-sp`} className="sell-row">
         <td>Sell Price / Unit</td>
         {brks.map((_, j) => {
-          const c = calcCosts(state, fi, j);
+          const c = costsMatrix[fi][j];
           if (!c || c.eau === 0) return <td key={j} style={{ textAlign: 'right' }}>N/A</td>;
           const m = Number(state.margins?.[`${fg.id}|${j}`]) || 0;
           const sp = m > 0 && m < 100 ? fmtC(c.total / (1 - m / 100), 4) : '—';
@@ -142,7 +144,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
       <tr key={`${fg.id}-as`} style={{ fontSize: 11.5, background: '#f0fdf4', color: '#166534' }}>
         <td>Annual sell (×EAU)</td>
         {brks.map((_, j) => {
-          const c = calcCosts(state, fi, j);
+          const c = costsMatrix[fi][j];
           if (!c || !c.eau) return <td key={j} style={{ textAlign: 'right', color: '#aaa' }}>—</td>;
           const m = Number(state.margins?.[`${fg.id}|${j}`]) || 0;
           const as_ = m > 0 && m < 100 ? fmtC(c.total / (1 - m / 100) * c.eau, 0) : '—';

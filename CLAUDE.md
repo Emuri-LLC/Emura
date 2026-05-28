@@ -45,7 +45,7 @@ per volume break.
 ## Project phases
 - ✅ Phase 0: Environment setup (Node, Git, GitHub, Vercel)
 - ✅ Phase 1: Get something live on Vercel
-- ✅ Phase 2: Full React migration — all 7 tabs, calculations, drag-and-drop
+- ✅ Phase 2: Full React migration — all 8 tabs, calculations, drag-and-drop
 - ✅ Phase 3: Supabase authentication — login/signup live, app gated behind auth
 - ✅ Phase 4: Cloud save + org schema — quotes in Supabase JSONB, org/site/dept hierarchy, admin drawer, invite flow
 - 🔜 Phase 5: Organizations and sharing — cross-user quote visibility, org switcher, share links
@@ -56,7 +56,7 @@ per volume break.
 - `manufacturing-cost-estimator-spec.html`: product specification document
 - `emura-app/`: the live Next.js application deployed to emura.io
 - `emura-app/public/emura.js`: intentional stub (3-line comment), all logic is in React
-- All 7 tabs fully functional in React: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary
+- All 8 tabs fully functional in React: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary, Mfg Summary
 - Auth required: unauthenticated users redirected to `/login`; logout clears localStorage
 - Quotes stored in Supabase (`quotes` table, JSONB `state` column) per department
 - localStorage is a write-through cache — used as offline fallback only
@@ -68,7 +68,7 @@ per volume break.
 - Auto-creates org + Main Site + General dept on signup via `handle_new_user` trigger on auth.users
 - Admin gear icon (⚙) opens slide-out drawer: manage org name, sites, departments, users, invite links
 - Token-based invite flow: admin generates link → `/join?token=...` → recipient signs up/in → auto-joined; invite page defaults to sign-up mode and hides the company name field
-- Undo/redo via history stack in page.tsx (40-state depth); Export/Import as JSON still available
+- Undo/redo via history stack in page.tsx (39-state depth); Export/Import as JSON still available
 - All calculations run client-side synchronously
 - Parts & equipment library: auto-synced on every cloud save; locked entries (shared across multiple quotes) can only be updated via manual "→ Update Library" push
 - Quote Review panel (bottom of Quote Info tab): compares active quote against library; red = library ≥ quote (possible underestimate), green = library < quote (cost reduction available)
@@ -483,6 +483,7 @@ If you add a new field to `AppState`, add its guard to this list.
 - `part_prices` — tiered pricing keyed by `(part_id, min_qty)` where `min_qty` is annual purchasing qty
 - `equipment_library` — org-wide equipment; unique on `(org_id, name)`; columns include `source_quote_id` and `locked`
 - `labor_rate_library` — org-wide labor rates; unique on `(org_id, name)`; same lock/source pattern as equipment
+  - Note: `pushLaborRateToLibrary` is exported from `lib/db.ts` but is not called anywhere in the codebase. Labor rate library push is unimplemented — there is no "→ Update Library" button for labor rates in the Quote Review panel or elsewhere.
 
 ### Auto-sync (no manual data entry needed)
 Every debounced cloud save calls `syncPartsToLibrary` and `syncEquipmentToLibrary` (both in `lib/db.ts`).

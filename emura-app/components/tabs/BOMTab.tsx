@@ -3,8 +3,8 @@
 import { useState, useRef } from 'react';
 import { useDragSort } from '@/hooks/useDragSort';
 import InfoIcon from '@/components/InfoIcon';
-import type { AppState, BOMItem, LibraryPart, LibraryPartPrice } from '@/lib/calculations';
-import { annualPurchQty, setCost } from '@/lib/calculations';
+import type { AppState, BOMItem, LibraryPart } from '@/lib/calculations';
+import { annualPurchQty, applicablePrice, setCost } from '@/lib/calculations';
 import { uid, parseFraction } from '@/lib/state';
 
 interface Props {
@@ -15,12 +15,6 @@ interface Props {
 }
 
 // ── Part number autocomplete ──────────────────────────────────
-
-function bestLibraryPrice(prices: LibraryPartPrice[], annualQty: number): number | null {
-  const candidates = prices.filter(p => p.minQty <= annualQty);
-  if (!candidates.length) return null;
-  return candidates.reduce((a, b) => b.minQty > a.minQty ? b : a).unitCost;
-}
 
 function PartNumberInput({ value, libraryParts, onCommit }: {
   value: string;
@@ -163,7 +157,7 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                                 newState = { ...newState, materialCosts: { ...newState.materialCosts } };
                                 state.breaks.forEach((_, bki) => {
                                   const aq = annualPurchQty(newState, updatedItem, bki);
-                                  if (aq > 0) { const price = bestLibraryPrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price); }
+                                  if (aq > 0) { const price = applicablePrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price.unitCost); }
                                 });
                               }
                               onUpdate(newState);
@@ -240,7 +234,7 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                                 newState = { ...newState, materialCosts: { ...newState.materialCosts } };
                                 state.breaks.forEach((_, bki) => {
                                   const aq = annualPurchQty(newState, updatedItem, bki);
-                                  if (aq > 0) { const price = bestLibraryPrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price); }
+                                  if (aq > 0) { const price = applicablePrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price.unitCost); }
                                 });
                               }
                               onUpdate(newState);

@@ -2,16 +2,12 @@
 
 import type { AppState } from '@/lib/calculations';
 import { calcDLHours, calcILHours, calcEquipUtilization, getTaktBreakInfo, totalAnnualUnits } from '@/lib/calculations';
+import { fmtH, fmtP, fmtN, fmtS } from '@/lib/format';
 
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
 }
-
-function fmtH(n: number) { return isNaN(n) ? '—' : n.toFixed(1); }
-function fmtP(n: number) { return isNaN(n) ? '—' : n.toFixed(1) + '%'; }
-function fmtN(n: number) { return isNaN(n) || !isFinite(n) ? '—' : n.toLocaleString(undefined, { maximumFractionDigits: 0 }); }
-function fmtS(n: number) { return isNaN(n) ? '—' : n.toFixed(2) + 's'; }
 
 export default function MfgSummaryTab({ state }: Props) {
   const fgs  = state.finishedGoods;

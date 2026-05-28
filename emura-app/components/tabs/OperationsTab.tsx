@@ -7,16 +7,13 @@ import LaborRateSelector from '@/components/LaborRateSelector';
 import type { AppState, DirectOp, IndirectOp, Subcontract, LaborRate, LibraryLaborRate } from '@/lib/calculations';
 import { getTaktInfo } from '@/lib/calculations';
 import { uid } from '@/lib/state';
+import { fmtN } from '@/lib/format';
 
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
   resetKey?: number;
   libraryLaborRates?: LibraryLaborRate[];
-}
-
-function fmtN(n: number, d = 0) {
-  return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
 export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLaborRates = [] }: Props) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState, LibraryPart, LibraryEquipment, LibraryLaborRate, ReviewItem } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
@@ -20,6 +20,7 @@ import SummaryTab        from '@/components/tabs/SummaryTab';
 import MfgSummaryTab     from '@/components/tabs/MfgSummaryTab';
 import QuotesList        from '@/components/QuotesList';
 import AdminDrawer       from '@/components/AdminDrawer';
+import TabErrorBoundary  from '@/components/TabErrorBoundary';
 
 const TABS = [
   { id: 'info',       label: 'Quote Info'        },
@@ -62,7 +63,7 @@ export default function Home() {
   const orgCtxRef  = useRef<OrgContext | null>(null);
   const userIdRef  = useRef<string>('');
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // ── Bootstrap ───────────────────────────────────────────────
 
@@ -347,19 +348,22 @@ export default function Home() {
 
   const canEdit = orgCtx.role === 'admin' || orgCtx.role === 'estimator';
 
-  const sharedProps = { state: appState!, onUpdate: handleUpdate, resetKey };
-
   function renderTab() {
+    const tabProps = {
+      state: appState!,
+      onUpdate: canEdit ? handleUpdate : () => {},
+      resetKey,
+    };
     switch (currentTab) {
-      case 'info':       return <QuoteInfoTab     {...sharedProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={handlePushToLibrary} />;
-      case 'fgs':        return <FinishedGoodsTab {...sharedProps} />;
-      case 'bom':        return <BOMTab           {...sharedProps} libraryParts={libraryParts} />;
-      case 'matcost':    return <MaterialCostsTab {...sharedProps} />;
-      case 'equip':      return <EquipmentTab     {...sharedProps} libraryEquipment={libraryEquipment} />;
-      case 'ops':        return <OperationsTab    {...sharedProps} libraryLaborRates={libraryLaborRates} />;
-      case 'summary':    return <SummaryTab       {...sharedProps} />;
-      case 'mfgsummary': return <MfgSummaryTab    {...sharedProps} />;
-      default:           return <QuoteInfoTab     {...sharedProps} />;
+      case 'info':       return <TabErrorBoundary tabName={currentTab}><QuoteInfoTab     {...tabProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={canEdit ? handlePushToLibrary : undefined} /></TabErrorBoundary>;
+      case 'fgs':        return <TabErrorBoundary tabName={currentTab}><FinishedGoodsTab {...tabProps} /></TabErrorBoundary>;
+      case 'bom':        return <TabErrorBoundary tabName={currentTab}><BOMTab           {...tabProps} libraryParts={libraryParts} /></TabErrorBoundary>;
+      case 'matcost':    return <TabErrorBoundary tabName={currentTab}><MaterialCostsTab {...tabProps} /></TabErrorBoundary>;
+      case 'equip':      return <TabErrorBoundary tabName={currentTab}><EquipmentTab     {...tabProps} libraryEquipment={libraryEquipment} /></TabErrorBoundary>;
+      case 'ops':        return <TabErrorBoundary tabName={currentTab}><OperationsTab    {...tabProps} libraryLaborRates={libraryLaborRates} /></TabErrorBoundary>;
+      case 'summary':    return <TabErrorBoundary tabName={currentTab}><SummaryTab       {...tabProps} /></TabErrorBoundary>;
+      case 'mfgsummary': return <TabErrorBoundary tabName={currentTab}><MfgSummaryTab    {...tabProps} /></TabErrorBoundary>;
+      default:           return <TabErrorBoundary tabName={currentTab}><QuoteInfoTab     {...tabProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} /></TabErrorBoundary>;
     }
   }
 
@@ -447,23 +451,7 @@ export default function Home() {
             ))}
           </nav>
           <main style={{ padding: '14px 16px', flex: 1, overflowX: 'auto' }}>
-            {canEdit ? renderTab() : (
-              // Viewer: render tab but onUpdate is a no-op
-              (() => {
-                const viewProps = { state: appState, onUpdate: () => {}, resetKey };
-                switch (currentTab) {
-                  case 'info':       return <QuoteInfoTab     {...viewProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} />;
-                  case 'fgs':        return <FinishedGoodsTab {...viewProps} />;
-                  case 'bom':        return <BOMTab           {...viewProps} libraryParts={libraryParts} />;
-                  case 'matcost':    return <MaterialCostsTab {...viewProps} />;
-                  case 'equip':      return <EquipmentTab     {...viewProps} libraryEquipment={libraryEquipment} />;
-                  case 'ops':        return <OperationsTab    {...viewProps} libraryLaborRates={libraryLaborRates} />;
-                  case 'summary':    return <SummaryTab       {...viewProps} />;
-                  case 'mfgsummary': return <MfgSummaryTab    {...viewProps} />;
-                  default:           return <QuoteInfoTab     {...viewProps} />;
-                }
-              })()
-            )}
+            {renderTab()}
           </main>
         </>
       )}

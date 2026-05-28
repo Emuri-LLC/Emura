@@ -34,8 +34,6 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
 
   const [members, setMembers]     = useState<OrgMember[]>([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
-  // member email resolution: userId → email (from invite records)
-  const [emailMap, setEmailMap]   = useState<Record<string, string>>({});
 
   const [inviteEmail, setInviteEmail]       = useState('');
   const [inviteRole, setInviteRole]         = useState<OrgMember['role']>('estimator');
@@ -60,16 +58,10 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
   // ── Load members ───────────────────────────────────────────
 
   const loadMembers = useCallback(async () => {
+    // listMembers resolves emails internally via get_org_member_emails RPC
     const raw = await listMembers(supabase, orgCtx.orgId);
     setMembers(raw);
     setMembersLoaded(true);
-    // Resolve emails via security-definer RPC (can access auth.users)
-    const { data } = await supabase.rpc('get_org_member_emails', { p_org_id: orgCtx.orgId });
-    if (data) {
-      const map: Record<string, string> = {};
-      (data as { user_id: string; email: string }[]).forEach(r => { map[r.user_id] = r.email; });
-      setEmailMap(map);
-    }
   }, [orgCtx.orgId]);
 
   useEffect(() => {
@@ -262,7 +254,6 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
                 <MemberRow
                   key={m.id}
                   member={m}
-                  emailMap={emailMap}
                   allDepts={allDepts}
                   currentUserId={currentUserId}
                   onUpdate={(role, deptId) => handleUpdateMember(m.id, role, deptId)}
@@ -431,15 +422,14 @@ function DeptRow({ dept, onRename, onDelete }: {
   );
 }
 
-function MemberRow({ member, emailMap, allDepts, currentUserId, onUpdate, onRemove }: {
+function MemberRow({ member, allDepts, currentUserId, onUpdate, onRemove }: {
   member: OrgMember;
-  emailMap: Record<string, string>;
   allDepts: (Department & { siteName: string })[];
   currentUserId: string;
   onUpdate: (role: OrgMember['role'], deptId: string | null) => void;
   onRemove: () => void;
 }) {
-  const display = emailMap[member.userId] ?? member.userId.slice(0, 8) + '…';
+  const display = member.email;
   const isMe = member.userId === currentUserId;
 
   if (isMe) {
