@@ -8,10 +8,11 @@ import { uid } from '@/lib/state';
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
+  resetKey?: number;
   libraryEquipment?: LibraryEquipment[];
 }
 
-export default function EquipmentTab({ state, onUpdate, libraryEquipment = [] }: Props) {
+export default function EquipmentTab({ state, onUpdate, resetKey = 0, libraryEquipment = [] }: Props) {
   const sort = useDragSort(state.equipment, equipment => onUpdate({ ...state, equipment }));
 
   function update(i: number, patch: Partial<Equipment>) {
@@ -85,10 +86,10 @@ export default function EquipmentTab({ state, onUpdate, libraryEquipment = [] }:
                 {state.equipment.map((eq, i) => (
                   <tr key={eq.id} {...sort.dragProps(i)} className={sort.rowClass(i)}>
                     <td className="drag-h">&#9776;</td>
-                    <td><input type="text" value={eq.name ?? ''} onChange={e => update(i, { name: e.target.value })} /></td>
-                    <td><input type="number" min={0} step="any" value={eq.capex || ''} placeholder="0" onChange={e => update(i, { capex: parseFloat(e.target.value) || 0 })} /></td>
-                    <td><input type="number" min={0} step="any" value={eq.hourlyRunCost || ''} placeholder="0" onChange={e => update(i, { hourlyRunCost: parseFloat(e.target.value) || 0 })} /></td>
-                    <td><input type="number" min={0} step="any" value={eq.annualMaintenance || ''} placeholder="0" onChange={e => update(i, { annualMaintenance: parseFloat(e.target.value) || 0 })} /></td>
+                    <td><input type="text" key={eq.id + '-name-' + resetKey} defaultValue={eq.name ?? ''} onBlur={e => update(i, { name: e.target.value })} /></td>
+                    <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-capex-' + resetKey} defaultValue={eq.capex || ''} onBlur={e => update(i, { capex: parseFloat(e.target.value) || 0 })} /></td>
+                    <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-run-' + resetKey} defaultValue={eq.hourlyRunCost || ''} onBlur={e => update(i, { hourlyRunCost: parseFloat(e.target.value) || 0 })} /></td>
+                    <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-maint-' + resetKey} defaultValue={eq.annualMaintenance || ''} onBlur={e => update(i, { annualMaintenance: parseFloat(e.target.value) || 0 })} /></td>
                     <td style={{ textAlign: 'center' }}>
                       <input type="checkbox" checked={eq.projectSpecific ?? false} onChange={e => update(i, { projectSpecific: e.target.checked })} />
                     </td>

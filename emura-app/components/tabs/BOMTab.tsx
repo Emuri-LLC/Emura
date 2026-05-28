@@ -181,8 +181,8 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                             }}
                           />
                         </td>
-                        <td><input type="text" value={item.description ?? ''} onChange={e => updateItem(gi, { description: e.target.value })} /></td>
-                        <td style={{ width: 52 }}><input type="text" value={item.uom ?? ''} onChange={e => updateItem(gi, { uom: e.target.value })} /></td>
+                        <td><input type="text" key={item.id + '-desc-' + resetKey} defaultValue={item.description ?? ''} onBlur={e => updateItem(gi, { description: e.target.value })} /></td>
+                        <td style={{ width: 52 }}><input type="text" key={item.id + '-uom-' + resetKey} defaultValue={item.uom ?? ''} onBlur={e => updateItem(gi, { uom: e.target.value })} /></td>
                         {/* Qty uses defaultValue+onBlur so fractions can be typed without interruption */}
                         <td style={{ width: 80 }}>
                           <input type="text"
@@ -250,8 +250,8 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                             }}
                           />
                         </td>
-                        <td><input type="text" value={item.description ?? ''} onChange={e => updateItem(gi, { description: e.target.value })} /></td>
-                        <td style={{ width: 52 }}><input type="text" value={item.uom ?? ''} onChange={e => updateItem(gi, { uom: e.target.value })} /></td>
+                        <td><input type="text" key={item.id + '-desc-' + resetKey} defaultValue={item.description ?? ''} onBlur={e => updateItem(gi, { description: e.target.value })} /></td>
+                        <td style={{ width: 52 }}><input type="text" key={item.id + '-uom-' + resetKey} defaultValue={item.uom ?? ''} onBlur={e => updateItem(gi, { uom: e.target.value })} /></td>
                         {fgs.length > 0
                           ? fgs.map(fg => (
                             <td key={fg.id} style={{ textAlign: 'center' }}>

@@ -8,6 +8,7 @@ import { uid } from '@/lib/state';
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
+  resetKey?: number;
 }
 
 function totalAnnualUnits(fgs: FinishedGood[], bki: number) {
@@ -29,7 +30,7 @@ function applyMix(state: AppState, srcBki: number, dstBki: number): AppState {
   return { ...state, finishedGoods: fgs };
 }
 
-export default function FinishedGoodsTab({ state, onUpdate }: Props) {
+export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Props) {
   const brkSort  = useDragSort(state.breaks, brks => onUpdate({ ...state, breaks: brks }));
   const fgSort   = useDragSort(state.finishedGoods, fgs => onUpdate({ ...state, finishedGoods: fgs }));
 
@@ -116,9 +117,9 @@ export default function FinishedGoodsTab({ state, onUpdate }: Props) {
               {state.breaks.map((b, i) => (
                 <tr key={b.id} {...brkSort.dragProps(i)} className={brkSort.rowClass(i)}>
                   <td className="drag-h">&#9776;</td>
-                  <td><input type="text" value={b.label} onChange={e => setBreak(i, 'label', e.target.value)} /></td>
-                  <td><input type="number" min={1} value={b.buildsPerYear} onChange={e => setBreak(i, 'buildsPerYear', Number(e.target.value) || 1)} /></td>
-                  <td><input type="number" min={0} value={b.totalEAU || ''} placeholder="optional" onChange={e => setBreak(i, 'totalEAU', Number(e.target.value) || 0)} /></td>
+                  <td><input type="text" key={b.id + '-label-' + resetKey} defaultValue={b.label} onBlur={e => setBreak(i, 'label', e.target.value)} /></td>
+                  <td><input type="number" min={1} key={b.id + '-bpy-' + resetKey} defaultValue={b.buildsPerYear} onBlur={e => setBreak(i, 'buildsPerYear', Number(e.target.value) || 1)} /></td>
+                  <td><input type="number" min={0} placeholder="optional" key={b.id + '-eau-' + resetKey} defaultValue={b.totalEAU || ''} onBlur={e => setBreak(i, 'totalEAU', Number(e.target.value) || 0)} /></td>
                   <td>
                     {state.breaks.length > 1 && (
                       <button className="btn btn-del btn-sm" onClick={() => deleteBreak(i)}>✕</button>
@@ -171,13 +172,14 @@ export default function FinishedGoodsTab({ state, onUpdate }: Props) {
                   {state.finishedGoods.map((fg, i) => (
                     <tr key={fg.id} {...fgSort.dragProps(i)} className={fgSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
-                      <td><input type="text" value={fg.name} onChange={e => setFGField(i, 'name', e.target.value)} /></td>
-                      <td><input type="text" value={fg.description ?? ''} onChange={e => setFGField(i, 'description', e.target.value)} /></td>
+                      <td><input type="text" key={fg.id + '-name-' + resetKey} defaultValue={fg.name} onBlur={e => setFGField(i, 'name', e.target.value)} /></td>
+                      <td><input type="text" key={fg.id + '-desc-' + resetKey} defaultValue={fg.description ?? ''} onBlur={e => setFGField(i, 'description', e.target.value)} /></td>
                       {state.breaks.map((_, j) => (
                         <td key={j} style={{ textAlign: 'center' }}>
                           <input type="number" min={0}
-                            value={Number((fg.breaks[j] || {}).eau) || ''}
-                            onChange={e => setEAU(i, j, e.target.value)} />
+                            key={fg.id + '-' + j + '-eau-' + resetKey}
+                            defaultValue={Number((fg.breaks[j] || {}).eau) || ''}
+                            onBlur={e => setEAU(i, j, e.target.value)} />
                         </td>
                       ))}
                       <td><button className="btn btn-del btn-sm" onClick={() => deleteFG(i)}>✕</button></td>

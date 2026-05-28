@@ -133,7 +133,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                   {state.directOps.map((op, i) => (
                     <tr key={op.id} {...dlSort.dragProps(i)} className={dlSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
-                      <td className="op-name"><input type="text" value={op.name ?? ''} onChange={e => setDL(i, { name: e.target.value })} /></td>
+                      <td className="op-name"><input type="text" key={op.id + '-name-' + resetKey} defaultValue={op.name ?? ''} onBlur={e => setDL(i, { name: e.target.value })} /></td>
                       <td style={{ minWidth: 130 }}>
                         <LaborRateSelector
                           selectedId={op.rateId ?? ''}
@@ -151,9 +151,9 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                         />
                       </td>
                       <td><input type="number" min={0.1} step="any" style={{ maxWidth: 50 }} key={op.id + '-ops-' + resetKey} defaultValue={op.operators ?? 1} onBlur={e => setDL(i, { operators: parseFloat(e.target.value) || 1 })} /></td>
-                      <td><input type="number" min={0} step="any" value={op.cycleTimeSec || ''} onChange={e => setDL(i, { cycleTimeSec: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={op.orderSetupMin || ''} onChange={e => setDL(i, { orderSetupMin: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={op.lineSetupMin || ''} onChange={e => setDL(i, { lineSetupMin: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={op.id + '-ct-' + resetKey} defaultValue={op.cycleTimeSec || ''} onBlur={e => setDL(i, { cycleTimeSec: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={op.id + '-os-' + resetKey} defaultValue={op.orderSetupMin || ''} onBlur={e => setDL(i, { orderSetupMin: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={op.id + '-ls-' + resetKey} defaultValue={op.lineSetupMin || ''} onBlur={e => setDL(i, { lineSetupMin: parseFloat(e.target.value) || 0 })} /></td>
                       <td style={{ minWidth: 140 }}>
                         <EquipmentSelector
                           selectedIds={op.equipmentIds || []}
@@ -177,8 +177,8 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                         />
                       </td>
                       <td className="notes-col">
-                        <textarea value={op.notes ?? ''} rows={1} style={{ minHeight: 28, resize: 'vertical' }}
-                          onChange={e => setDL(i, { notes: e.target.value })} />
+                        <textarea key={op.id + '-notes-' + resetKey} defaultValue={op.notes ?? ''} rows={1} style={{ minHeight: 28, resize: 'vertical' }}
+                          onBlur={e => setDL(i, { notes: e.target.value })} />
                       </td>
                       <td><button className="btn btn-del btn-sm" onClick={() => deleteDL(i)}>✕</button></td>
                     </tr>
@@ -218,14 +218,14 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                   {state.subcontracts.map((s, i) => (
                     <tr key={s.id} {...subSort.dragProps(i)} className={subSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
-                      <td className="op-name"><input type="text" value={s.name ?? ''} onChange={e => setSub(i, { name: e.target.value })} /></td>
-                      <td><input type="number" min={0} step="any" value={s.priceEach || ''} onChange={e => setSub(i, { priceEach: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={s.pricePerLine || ''} onChange={e => setSub(i, { pricePerLine: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={s.pricePerOrder || ''} onChange={e => setSub(i, { pricePerOrder: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={s.pricePerYear || ''} onChange={e => setSub(i, { pricePerYear: parseFloat(e.target.value) || 0 })} /></td>
+                      <td className="op-name"><input type="text" key={s.id + '-name-' + resetKey} defaultValue={s.name ?? ''} onBlur={e => setSub(i, { name: e.target.value })} /></td>
+                      <td><input type="number" min={0} step="any" key={s.id + '-ea-' + resetKey} defaultValue={s.priceEach || ''} onBlur={e => setSub(i, { priceEach: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={s.id + '-line-' + resetKey} defaultValue={s.pricePerLine || ''} onBlur={e => setSub(i, { pricePerLine: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={s.id + '-ord-' + resetKey} defaultValue={s.pricePerOrder || ''} onBlur={e => setSub(i, { pricePerOrder: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={s.id + '-yr-' + resetKey} defaultValue={s.pricePerYear || ''} onBlur={e => setSub(i, { pricePerYear: parseFloat(e.target.value) || 0 })} /></td>
                       <td className="notes-col">
-                        <textarea value={s.notes ?? ''} rows={1} style={{ minHeight: 28, resize: 'vertical' }}
-                          onChange={e => setSub(i, { notes: e.target.value })} />
+                        <textarea key={s.id + '-notes-' + resetKey} defaultValue={s.notes ?? ''} rows={1} style={{ minHeight: 28, resize: 'vertical' }}
+                          onBlur={e => setSub(i, { notes: e.target.value })} />
                       </td>
                       <td><button className="btn btn-del btn-sm" onClick={() => deleteSub(i)}>✕</button></td>
                     </tr>
@@ -265,7 +265,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                   {state.indirectOps.map((op, i) => (
                     <tr key={op.id} {...ilSort.dragProps(i)} className={ilSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
-                      <td className="op-name"><input type="text" value={op.name ?? ''} onChange={e => setIL(i, { name: e.target.value })} /></td>
+                      <td className="op-name"><input type="text" key={op.id + '-name-' + resetKey} defaultValue={op.name ?? ''} onBlur={e => setIL(i, { name: e.target.value })} /></td>
                       <td style={{ minWidth: 130 }}>
                         <LaborRateSelector
                           selectedId={op.rateId ?? ''}
@@ -276,12 +276,12 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                           onCopyFromLibrary={lr => copyRateFromLibrary(lr)}
                         />
                       </td>
-                      <td><input type="number" min={0} step="any" value={op.annualHours || ''} onChange={e => setIL(i, { annualHours: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={op.orderSetupHrs || ''} onChange={e => setIL(i, { orderSetupHrs: parseFloat(e.target.value) || 0 })} /></td>
-                      <td><input type="number" min={0} step="any" value={op.lineSetupHrs || ''} onChange={e => setIL(i, { lineSetupHrs: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={op.id + '-ah-' + resetKey} defaultValue={op.annualHours || ''} onBlur={e => setIL(i, { annualHours: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={op.id + '-os-' + resetKey} defaultValue={op.orderSetupHrs || ''} onBlur={e => setIL(i, { orderSetupHrs: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" key={op.id + '-ls-' + resetKey} defaultValue={op.lineSetupHrs || ''} onBlur={e => setIL(i, { lineSetupHrs: parseFloat(e.target.value) || 0 })} /></td>
                       <td className="notes-col">
-                        <textarea value={op.notes ?? ''} rows={1} style={{ minHeight: 28, resize: 'vertical' }}
-                          onChange={e => setIL(i, { notes: e.target.value })} />
+                        <textarea key={op.id + '-notes-' + resetKey} defaultValue={op.notes ?? ''} rows={1} style={{ minHeight: 28, resize: 'vertical' }}
+                          onBlur={e => setIL(i, { notes: e.target.value })} />
                       </td>
                       <td><button className="btn btn-del btn-sm" onClick={() => deleteIL(i)}>✕</button></td>
                     </tr>

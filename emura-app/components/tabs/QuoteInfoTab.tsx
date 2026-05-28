@@ -16,7 +16,7 @@ interface Props {
   onPushToLibrary?: (item: ReviewItem) => void;
 }
 
-export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libraryEquipment = [], onPushToLibrary }: Props) {
+export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryParts = [], libraryEquipment = [], onPushToLibrary }: Props) {
   const notesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,8 +88,9 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
             <label>Quote Name <InfoIcon k="qname" /></label>
             <input
               type="text"
-              value={state.quote.name}
-              onChange={e => setQuote('name', e.target.value)}
+              key={'name-' + resetKey}
+              defaultValue={state.quote.name}
+              onBlur={e => setQuote('name', e.target.value)}
             />
           </div>
 
@@ -97,8 +98,9 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
             <label>Customer <InfoIcon k="customer" /></label>
             <input
               type="text"
-              value={state.quote.customer}
-              onChange={e => setQuote('customer', e.target.value)}
+              key={'customer-' + resetKey}
+              defaultValue={state.quote.customer}
+              onBlur={e => setQuote('customer', e.target.value)}
             />
           </div>
 
@@ -128,7 +130,7 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
               contentEditable
               suppressContentEditableWarning
               className="notes-editable"
-              onInput={() => {
+              onBlur={() => {
                 if (notesRef.current) {
                   setQuote('notes', notesRef.current.innerHTML);
                 }
@@ -149,8 +151,9 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
             <label>Working Hours / Year <InfoIcon k="wkHrs" /></label>
             <input
               type="number"
-              value={state.settings.workingHoursPerYear}
-              onChange={e => setSettings('workingHoursPerYear', parseFloat(e.target.value) || 0)}
+              key={'wkh-' + resetKey}
+              defaultValue={state.settings.workingHoursPerYear}
+              onBlur={e => setSettings('workingHoursPerYear', parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -158,8 +161,9 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
             <label>CapEx Depreciation Period (years) <InfoIcon k="capexYrs" /></label>
             <input
               type="number"
-              value={state.settings.capexYears}
-              onChange={e => setSettings('capexYears', parseFloat(e.target.value) || 0)}
+              key={'cy-' + resetKey}
+              defaultValue={state.settings.capexYears}
+              onBlur={e => setSettings('capexYears', parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -180,8 +184,9 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
                 <input
                   type="text"
                   placeholder="Rate name (e.g. Shop Rate)"
-                  value={r.name}
-                  onChange={e => setRate(i, { name: e.target.value })}
+                  key={r.id + '-name-' + resetKey}
+                  defaultValue={r.name}
+                  onBlur={e => setRate(i, { name: e.target.value })}
                   style={{ flex: 2 }}
                 />
                 <span style={{ color: '#888', fontSize: 12 }}>$</span>
@@ -190,8 +195,9 @@ export default function QuoteInfoTab({ state, onUpdate, libraryParts = [], libra
                   min={0}
                   step="any"
                   placeholder="0"
-                  value={r.rate || ''}
-                  onChange={e => setRate(i, { rate: parseFloat(e.target.value) || 0 })}
+                  key={r.id + '-rate-' + resetKey}
+                  defaultValue={r.rate || ''}
+                  onBlur={e => setRate(i, { rate: parseFloat(e.target.value) || 0 })}
                   style={{ flex: 1, maxWidth: 80 }}
                 />
                 <span style={{ color: '#888', fontSize: 12 }}>/hr</span>

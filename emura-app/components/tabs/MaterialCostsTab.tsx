@@ -7,13 +7,14 @@ import InfoIcon from '@/components/InfoIcon';
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
+  resetKey?: number;
 }
 
 function fmtN(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-export default function MaterialCostsTab({ state, onUpdate }: Props) {
+export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Props) {
   const costable = state.bom.filter(item => !item.customerSupplied);
 
   if (!costable.length) {
@@ -108,8 +109,9 @@ export default function MaterialCostsTab({ state, onUpdate }: Props) {
                             type="text" className="src-inp"
                             placeholder="source"
                             title="Source of this price"
-                            value={srcVal}
-                            onChange={e => handleSourceChange(item, j, e.target.value)}
+                            key={srcKey + '-' + resetKey}
+                            defaultValue={srcVal}
+                            onBlur={e => handleSourceChange(item, j, e.target.value)}
                           />
                           <button className="btn-push"
                             onClick={() => pushSource(item, j)}
