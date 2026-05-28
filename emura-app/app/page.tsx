@@ -6,6 +6,8 @@ import type { AppState, LibraryPart, LibraryEquipment, LibraryLaborRate, ReviewI
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
 import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
+import { QUOTE_STATUS_ENABLED, computeStatusEntry } from '@/lib/quoteStatus';
+import type { QuoteStatusEntry } from '@/lib/quoteStatus';
 import type { QuoteSummary } from '@/lib/db';
 
 import QuoteInfoTab      from '@/components/tabs/QuoteInfoTab';
@@ -49,6 +51,10 @@ export default function Home() {
   const [libraryLaborRates, setLibraryLaborRates] = useState<LibraryLaborRate[]>([]);
 
   const [emailMap, setEmailMap] = useState<Record<string, string>>({});
+
+  // Quote status indicators
+  const [statusCache, setStatusCache] = useState<Record<string, QuoteStatusEntry | 'loading'>>({});
+  const loadGenRef = useRef(0);
 
   // Debounce timer for cloud saves
   const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -262,6 +268,26 @@ export default function Home() {
     setLibraryEquip(le);
   }
 
+  async function handleVisibleIdsChange(ids: string[]) {
+    if (!QUOTE_STATUS_ENABLED) return;
+    const gen = ++loadGenRef.current;
+    const toLoad = ids.filter(id => !statusCache[id]);
+    if (!toLoad.length) return;
+
+    setStatusCache(prev => {
+      const patch: Record<string, 'loading'> = {};
+      for (const id of toLoad) patch[id] = 'loading';
+      return { ...prev, ...patch };
+    });
+
+    await Promise.all(toLoad.map(async id => {
+      const state = await loadQuote(supabase, id);
+      if (!state || loadGenRef.current !== gen) return;
+      const entry = computeStatusEntry(state, libraryParts, libraryEquipment);
+      setStatusCache(prev => ({ ...prev, [id]: entry }));
+    }));
+  }
+
   function handleExport() {
     if (!appState) return;
     const a = document.createElement('a');
@@ -402,6 +428,8 @@ export default function Home() {
             onOpen={handleOpenQuote}
             onNew={handleNew}
             onDelete={handleDeleteQuote}
+            statusCache={statusCache}
+            onVisibleIdsChange={handleVisibleIdsChange}
           />
         </main>
       )}
