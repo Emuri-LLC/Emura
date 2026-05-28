@@ -129,7 +129,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </table>
 <p><em>Note: Volume Breaks are managed on the <strong>Finished Goods</strong> tab, not Quote Info. The column header of the Finished Goods table contains the break label, Builds/Year, and Target Total EAU fields. The "+ Add Break" button and per-break delete button are also on the Finished Goods tab.</em></p>
 
-<h4>Quote Review</h4>
+<h4>Quote Review &amp; Warnings</h4>
 <p>A card displayed below the Quote Information and Cost Rate Settings cards on the Quote Info tab. It compares the current quote's material costs and equipment values against the org-wide library and surfaces discrepancies as actionable findings.</p>
 <table><tr><th>Indicator</th><th>Condition</th><th>Meaning</th></tr>
 <tr><td style="color:#dc2626;font-weight:700">● Red</td><td>Library price ≥ quote price at that volume</td><td>The quote may be underestimating cost — real market rate is at least as high as entered</td></tr>
@@ -143,6 +143,33 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </ul>
 <p>Parts matching uses case-insensitive part number comparison. Equipment matching uses case-insensitive name comparison. The library price lookup finds the highest <em>min_qty</em> tier that does not exceed the annual purchasing quantity for that break.</p>
 <p>Library entries marked <strong>🔒 shared</strong> are used in more than one quote — auto-sync does not overwrite them on save. The "→ Update Library" button provides an explicit override for shared entries when the estimator intends to update the canonical value.</p>
+
+<h4>Warnings</h4>
+<p>The Quote Review card also surfaces structural and logical warnings (shown with amber ● indicators) that do not require library data. Warnings are computed from the current quote state and update live as values change. They require action in the relevant tab — there are no one-click fixes.</p>
+<table>
+<tr><th>Warning Type</th><th>Condition</th><th>Action Required</th></tr>
+<tr>
+  <td><strong>Missing cost</strong></td>
+  <td>A non-customer-supplied BOM item has a positive annual purchasing quantity at a volume break but no material cost entry has been entered for that quantity.</td>
+  <td>Enter a cost on the Material Costs tab for that part and break.</td>
+</tr>
+<tr>
+  <td><strong>Price anomaly</strong></td>
+  <td>A BOM item's material cost per unit is <em>higher</em> at a volume break with greater annual purchasing quantity than at a lower-volume break (prices should be non-increasing as volume rises).</td>
+  <td>Review and correct the material costs on the Material Costs tab. Typical cause: cost entered for the wrong volume tier, or a break's EAU was changed after costs were entered.</td>
+</tr>
+<tr>
+  <td><strong>Takt exceeded</strong></td>
+  <td>A direct labor operation's cycle time exceeds the takt time (available seconds per unit) at a given volume break. Takt = working hours per year × 3,600 ÷ total annual units at that break.</td>
+  <td>Reduce cycle time, increase working hours per year, reduce demand at that break, add parallel cells (split the operation), or accept that the operation is a capacity bottleneck.</td>
+</tr>
+<tr>
+  <td><strong>Over-utilization</strong></td>
+  <td>An equipment item's calculated utilization percentage exceeds 100% at a volume break. Utilization = (cycle hrs × annual units + order setup hrs × builds/yr + line setup hrs × builds/yr × FG count) ÷ working hrs/yr.</td>
+  <td>Reduce cycle time assigned to this equipment, reduce demand, increase working hours per year, or plan for a second machine (add a duplicate equipment entry and split the operations between them).</td>
+</tr>
+</table>
+<p>Warnings appear above the library comparison findings in the Quote Review card. The header shows a count badge for warnings (amber) and for library findings (red/green) independently.</p>
 
 <h3>3.2 Finished Goods</h3>
 <ul>

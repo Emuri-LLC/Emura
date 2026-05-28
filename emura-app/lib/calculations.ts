@@ -288,6 +288,100 @@ export interface TaktInfo {
   exceeding: DirectOp[];
 }
 
+// ── Quote warnings ────────────────────────────────────────────
+
+export type QuoteWarningKind =
+  | 'missing-cost'        // BOM item has no cost entry at a break where it has qty
+  | 'price-monotonicity'  // material cost increases at a higher-volume break
+  | 'takt-exceeded'       // a direct op's cycle time exceeds takt
+  | 'util-over-100';      // equipment utilization exceeds 100%
+
+export interface QuoteWarning {
+  kind: QuoteWarningKind;
+  message: string;
+  detail?: string;
+}
+
+export function computeQuoteWarnings(state: AppState): QuoteWarning[] {
+  const warnings: QuoteWarning[] = [];
+  const fmt = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+  // ── Missing material costs ──────────────────────────────────
+  for (const item of state.bom) {
+    if (item.customerSupplied || !item.partNumber.trim()) continue;
+    for (let bki = 0; bki < state.breaks.length; bki++) {
+      const aq = annualPurchQty(state, item, bki);
+      if (aq > 0 && !findCost(state, item.id, aq)) {
+        warnings.push({
+          kind: 'missing-cost',
+          message: `${item.partNumber} — no cost at ${state.breaks[bki].label}`,
+          detail: `${aq.toLocaleString()} units/yr purchasing qty`,
+        });
+      }
+    }
+  }
+
+  // ── Price monotonicity ──────────────────────────────────────
+  // Prices should be non-increasing as annual purchasing qty rises.
+  // Warn once per part if any higher-qty break has a higher cost than a lower-qty break.
+  for (const item of state.bom) {
+    if (item.customerSupplied || !item.partNumber.trim()) continue;
+    const pairs: { aq: number; cost: number; label: string }[] = [];
+    for (let bki = 0; bki < state.breaks.length; bki++) {
+      const aq = annualPurchQty(state, item, bki);
+      if (!aq) continue;
+      const found = findCost(state, item.id, aq);
+      if (!found) continue;
+      pairs.push({ aq, cost: found.cost, label: state.breaks[bki].label });
+    }
+    pairs.sort((a, b) => a.aq - b.aq);
+    let flagged = false;
+    for (let i = 0; i < pairs.length - 1 && !flagged; i++) {
+      for (let j = i + 1; j < pairs.length && !flagged; j++) {
+        if (pairs[j].cost > pairs[i].cost) {
+          warnings.push({
+            kind: 'price-monotonicity',
+            message: `${item.partNumber} — price increases at higher volume`,
+            detail: `${pairs[i].label} $${fmt(pairs[i].cost)} → ${pairs[j].label} $${fmt(pairs[j].cost)}`,
+          });
+          flagged = true;
+        }
+      }
+    }
+  }
+
+  // ── Takt exceeded ───────────────────────────────────────────
+  for (let bki = 0; bki < state.breaks.length; bki++) {
+    const info = getTaktBreakInfo(state, bki);
+    if (!info) continue;
+    for (const op of state.directOps) {
+      const ct = n(op.cycleTimeSec);
+      if (ct > 0 && ct > info.taktSec) {
+        warnings.push({
+          kind: 'takt-exceeded',
+          message: `"${op.name || '(unnamed)'}" cycle exceeds takt at ${state.breaks[bki].label}`,
+          detail: `${ct.toFixed(2)}s cycle > ${info.taktSec.toFixed(2)}s takt`,
+        });
+      }
+    }
+  }
+
+  // ── Equipment utilization > 100% ───────────────────────────
+  for (let bki = 0; bki < state.breaks.length; bki++) {
+    for (const u of calcEquipUtilization(state, bki)) {
+      if (u.utilPct > 100) {
+        warnings.push({
+          kind: 'util-over-100',
+          message: `"${u.equipment.name}" utilization ${u.utilPct.toFixed(1)}% at ${state.breaks[bki].label}`,
+          detail: `${u.occupiedHrs.toFixed(1)} hrs occupied of ${n(state.settings.workingHoursPerYear)} working hrs/yr`,
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
 // ── Internal utility ──────────────────────────────────────────
 
 function n(v: unknown): number {
