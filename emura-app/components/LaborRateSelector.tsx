@@ -9,7 +9,7 @@ interface Props {
   libraryRates: LibraryLaborRate[]; // rates from the org library
   onChange: (rateId: string) => void;
   onCreateRate: (name: string, rate: number) => string; // returns new rate id
-  onCopyFromLibrary: (libRate: LibraryLaborRate) => string; // copies to quote, returns id
+  onCopyFromLibrary: (libRate: LibraryLaborRate) => void; // copies to quote and selects, no return needed
 }
 
 export default function LaborRateSelector({
@@ -111,8 +111,9 @@ export default function LaborRateSelector({
                   <label
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => {
-                      const id = onCopyFromLibrary(lr);
-                      pick(id);
+                      onCopyFromLibrary(lr);
+                      setQuery('');
+                      setOpen(false);
                     }}
                   >
                     {lr.name} <span style={{ color: '#888', fontSize: 11 }}>— ${lr.rate}/hr</span>

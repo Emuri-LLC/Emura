@@ -72,12 +72,6 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
     return newRate.id;
   }
 
-  function copyRateFromLibrary(lr: LibraryLaborRate): string {
-    const newRate: LaborRate = { id: uid(), name: lr.name, rate: lr.rate };
-    onUpdate({ ...state, laborRates: [...(state.laborRates ?? []), newRate] });
-    return newRate.id;
-  }
-
   // ── Takt notice ─────────────────────────────────────────────
   const takt = getTaktInfo(state);
   let taktEl: React.ReactNode = null;
@@ -140,13 +134,14 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                           rates={state.laborRates ?? []}
                           libraryRates={libraryLaborRates}
                           onChange={rateId => setDL(i, { rateId })}
-                          onCreateRate={(name, rate) => {
-                            const id = createRate(name, rate);
-                            return id;
-                          }}
+                          onCreateRate={(name, rate) => createRate(name, rate)}
                           onCopyFromLibrary={lr => {
-                            const id = copyRateFromLibrary(lr);
-                            return id;
+                            const newRate: LaborRate = { id: uid(), name: lr.name, rate: lr.rate };
+                            onUpdate({
+                              ...state,
+                              laborRates: [...(state.laborRates ?? []), newRate],
+                              directOps: state.directOps.map((op, idx) => idx === i ? { ...op, rateId: newRate.id } : op),
+                            });
                           }}
                         />
                       </td>
@@ -273,7 +268,14 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                           libraryRates={libraryLaborRates}
                           onChange={rateId => setIL(i, { rateId })}
                           onCreateRate={(name, rate) => createRate(name, rate)}
-                          onCopyFromLibrary={lr => copyRateFromLibrary(lr)}
+                          onCopyFromLibrary={lr => {
+                            const newRate: LaborRate = { id: uid(), name: lr.name, rate: lr.rate };
+                            onUpdate({
+                              ...state,
+                              laborRates: [...(state.laborRates ?? []), newRate],
+                              indirectOps: state.indirectOps.map((op, idx) => idx === i ? { ...op, rateId: newRate.id } : op),
+                            });
+                          }}
                         />
                       </td>
                       <td><input type="number" min={0} step="any" key={op.id + '-ah-' + resetKey} defaultValue={op.annualHours || ''} onBlur={e => setIL(i, { annualHours: parseFloat(e.target.value) || 0 })} /></td>

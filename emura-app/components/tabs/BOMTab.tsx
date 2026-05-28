@@ -3,7 +3,8 @@
 import { useState, useRef } from 'react';
 import { useDragSort } from '@/hooks/useDragSort';
 import InfoIcon from '@/components/InfoIcon';
-import type { AppState, BOMItem, LibraryPart } from '@/lib/calculations';
+import type { AppState, BOMItem, LibraryPart, LibraryPartPrice } from '@/lib/calculations';
+import { annualPurchQty, setCost } from '@/lib/calculations';
 import { uid, parseFraction } from '@/lib/state';
 
 interface Props {
@@ -15,11 +16,16 @@ interface Props {
 
 // ── Part number autocomplete ──────────────────────────────────
 
-function PartNumberInput({ value, bomItems, libraryParts, onCommit }: {
+function bestLibraryPrice(prices: LibraryPartPrice[], annualQty: number): number | null {
+  const candidates = prices.filter(p => p.minQty <= annualQty);
+  if (!candidates.length) return null;
+  return candidates.reduce((a, b) => b.minQty > a.minQty ? b : a).unitCost;
+}
+
+function PartNumberInput({ value, libraryParts, onCommit }: {
   value: string;
-  bomItems: BOMItem[];
   libraryParts: LibraryPart[];
-  onCommit: (pn: string, extra?: { description: string; uom: string }) => void;
+  onCommit: (pn: string, extra?: { description: string; uom: string }, libPart?: LibraryPart) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
@@ -33,12 +39,9 @@ function PartNumberInput({ value, bomItems, libraryParts, onCommit }: {
     setOpen(true);
   }
 
-  const q = query.toLowerCase();
-  const quoteMatches = bomItems.filter(i => i.partNumber.trim() && i.partNumber.toLowerCase().includes(q));
-  const libMatches   = libraryParts.filter(lp => lp.partNumber.toLowerCase().includes(q) &&
-    !bomItems.some(i => i.partNumber.trim().toLowerCase() === lp.partNumber.trim().toLowerCase()));
-
-  const hasMatches = quoteMatches.length > 0 || libMatches.length > 0;
+  const libMatches = query.length > 0
+    ? libraryParts.filter(lp => lp.partNumber.toLowerCase().includes(query.toLowerCase()))
+    : [];
 
   return (
     <div style={{ position: 'relative' }}>
@@ -46,49 +49,27 @@ function PartNumberInput({ value, bomItems, libraryParts, onCommit }: {
         ref={inputRef}
         type="text"
         value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => { openMenu(); }}
+        onChange={e => { setQuery(e.target.value); if (e.target.value.length > 0) setOpen(true); else setOpen(false); }}
+        onFocus={() => { if (query.length > 0) openMenu(); }}
         onBlur={() => { setTimeout(() => { setOpen(false); onCommit(query); }, 150); }}
         autoComplete="off"
       />
-      {open && hasMatches && (
+      {open && libMatches.length > 0 && (
         <div className="eq-menu" style={menuStyle}>
-          {quoteMatches.length > 0 && (
-            <>
-              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb' }}>
-                From this quote
-              </div>
-              {quoteMatches.map(i => (
-                <div key={i.id} className="eq-item">
-                  <label onMouseDown={e => e.preventDefault()} onClick={() => { setQuery(i.partNumber); setOpen(false); onCommit(i.partNumber); }}>
-                    <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{i.partNumber}</span>
-                    {i.description && <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>{i.description}</span>}
-                  </label>
-                </div>
-              ))}
-            </>
-          )}
-          {libMatches.length > 0 && (
-            <>
-              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb', borderTop: quoteMatches.length > 0 ? '1px solid #eee' : undefined }}>
-                From library
-              </div>
-              {libMatches.map(lp => (
-                <div key={lp.id} className="eq-item">
-                  <label onMouseDown={e => e.preventDefault()} onClick={() => {
-                    setQuery(lp.partNumber);
-                    setOpen(false);
-                    onCommit(lp.partNumber, { description: lp.description, uom: lp.uom });
-                  }}>
-                    <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{lp.partNumber}</span>
-                    {lp.description && <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>{lp.description}</span>}
-                    <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
-                    {lp.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
-                  </label>
-                </div>
-              ))}
-            </>
-          )}
+          {libMatches.map(lp => (
+            <div key={lp.id} className="eq-item">
+              <label onMouseDown={e => e.preventDefault()} onClick={() => {
+                setQuery(lp.partNumber);
+                setOpen(false);
+                onCommit(lp.partNumber, { description: lp.description, uom: lp.uom }, lp);
+              }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{lp.partNumber}</span>
+                {lp.description && <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>{lp.description}</span>}
+                <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
+                {lp.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
+              </label>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -172,12 +153,20 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                         <td>
                           <PartNumberInput
                             value={item.partNumber ?? ''}
-                            bomItems={state.bom.filter(b => b.id !== item.id && b.partNumber.trim())}
                             libraryParts={libraryParts}
-                            onCommit={(pn, extra) => {
+                            onCommit={(pn, extra, libPart) => {
                               const patch: Partial<BOMItem> = { partNumber: pn };
                               if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
-                              updateItem(gi, patch);
+                              let newState = { ...state, bom: state.bom.map((b, i2) => i2 === gi ? { ...b, ...patch } : b) };
+                              if (libPart && libPart.prices.length > 0) {
+                                const updatedItem = { ...item, ...patch };
+                                newState = { ...newState, materialCosts: { ...newState.materialCosts } };
+                                state.breaks.forEach((_, bki) => {
+                                  const aq = annualPurchQty(newState, updatedItem, bki);
+                                  if (aq > 0) { const price = bestLibraryPrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price); }
+                                });
+                              }
+                              onUpdate(newState);
                             }}
                           />
                         </td>
@@ -241,12 +230,20 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                         <td>
                           <PartNumberInput
                             value={item.partNumber ?? ''}
-                            bomItems={state.bom.filter(b => b.id !== item.id && b.partNumber.trim())}
                             libraryParts={libraryParts}
-                            onCommit={(pn, extra) => {
+                            onCommit={(pn, extra, libPart) => {
                               const patch: Partial<BOMItem> = { partNumber: pn };
                               if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
-                              updateItem(gi, patch);
+                              let newState = { ...state, bom: state.bom.map((b, i2) => i2 === gi ? { ...b, ...patch } : b) };
+                              if (libPart && libPart.prices.length > 0) {
+                                const updatedItem = { ...item, ...patch };
+                                newState = { ...newState, materialCosts: { ...newState.materialCosts } };
+                                state.breaks.forEach((_, bki) => {
+                                  const aq = annualPurchQty(newState, updatedItem, bki);
+                                  if (aq > 0) { const price = bestLibraryPrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price); }
+                                });
+                              }
+                              onUpdate(newState);
                             }}
                           />
                         </td>

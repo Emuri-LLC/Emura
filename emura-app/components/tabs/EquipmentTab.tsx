@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef } from 'react';
 import { useDragSort } from '@/hooks/useDragSort';
 import InfoIcon from '@/components/InfoIcon';
 import type { AppState, Equipment, LibraryEquipment } from '@/lib/calculations';
@@ -12,8 +13,65 @@ interface Props {
   libraryEquipment?: LibraryEquipment[];
 }
 
+// ── Equipment name input with library autocomplete ────────────
+
+function EquipmentNameInput({ value, libraryEquipment, onCommit }: {
+  value: string;
+  libraryEquipment: LibraryEquipment[];
+  onCommit: (name: string, extra?: { capex: number; hourlyRunCost: number; annualMaintenance: number }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openMenu() {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    setMenuStyle({ position: 'fixed', top: r.bottom + 2, left: r.left, width: Math.max(220, r.width), zIndex: 9999 });
+    setOpen(true);
+  }
+
+  const libMatches = query.length > 0
+    ? libraryEquipment.filter(le => le.name.toLowerCase().includes(query.toLowerCase()))
+    : [];
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); if (e.target.value.length > 0) setOpen(true); else setOpen(false); }}
+        onFocus={() => { if (query.length > 0) openMenu(); }}
+        onBlur={() => { setTimeout(() => { setOpen(false); onCommit(query); }, 150); }}
+        autoComplete="off"
+      />
+      {open && libMatches.length > 0 && (
+        <div className="eq-menu" style={menuStyle}>
+          {libMatches.map(le => (
+            <div key={le.id} className="eq-item">
+              <label onMouseDown={e => e.preventDefault()} onClick={() => {
+                setQuery(le.name);
+                setOpen(false);
+                onCommit(le.name, { capex: le.capex, hourlyRunCost: le.hourlyRunCost, annualMaintenance: le.annualMaintenance });
+              }}>
+                {le.name}
+                {le.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
+                <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EquipmentTab({ state, onUpdate, resetKey = 0, libraryEquipment = [] }: Props) {
   const sort = useDragSort(state.equipment, equipment => onUpdate({ ...state, equipment }));
+  // Per-row reset keys so library-fill can refresh defaultValue inputs
+  const [localResetKeys, setLocalResetKeys] = useState<Record<string, number>>({});
 
   function update(i: number, patch: Partial<Equipment>) {
     onUpdate({ ...state, equipment: state.equipment.map((eq, idx) => idx === i ? { ...eq, ...patch } : eq) });
@@ -21,12 +79,6 @@ export default function EquipmentTab({ state, onUpdate, resetKey = 0, libraryEqu
 
   function addEquipment() {
     onUpdate({ ...state, equipment: [...state.equipment, { id: uid(), name: '', capex: 0, hourlyRunCost: 0, annualMaintenance: 0, projectSpecific: false }] });
-  }
-
-  function copyFromLibrary(le: LibraryEquipment) {
-    const existing = state.equipment.find(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase());
-    if (existing) return; // already in quote
-    onUpdate({ ...state, equipment: [...state.equipment, { id: uid(), name: le.name, capex: le.capex, hourlyRunCost: le.hourlyRunCost, annualMaintenance: le.annualMaintenance, projectSpecific: false }] });
   }
 
   function deleteEquipment(i: number) {
@@ -51,23 +103,6 @@ export default function EquipmentTab({ state, onUpdate, resetKey = 0, libraryEqu
           <b>Project-Specific</b>: spreads cost over EAU rather than utilization %.
           Utilization = (cycle hrs × annual units + order setup hrs × builds/yr + line setup hrs × builds/yr × FG count) ÷ working hrs/yr.
         </div>
-        {/* Library equipment not yet in this quote */}
-        {libraryEquipment.filter(le => !state.equipment.some(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase())).length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>From library</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {libraryEquipment
-                .filter(le => !state.equipment.some(e => e.name.trim().toLowerCase() === le.name.trim().toLowerCase()))
-                .map(le => (
-                  <button key={le.id} className="btn btn-neu btn-sm" onClick={() => copyFromLibrary(le)}
-                    title={`CapEx: $${le.capex}, Run: $${le.hourlyRunCost}/hr, Maint: $${le.annualMaintenance}/yr`}>
-                    + {le.name}
-                    {le.locked && <span style={{ marginLeft: 4, fontSize: 9, color: '#c2410c' }}>locked</span>}
-                  </button>
-                ))}
-            </div>
-          </div>
-        )}
 
         {state.equipment.length === 0 && <p className="empty-msg">No equipment defined.</p>}
         {state.equipment.length > 0 && (
@@ -83,19 +118,35 @@ export default function EquipmentTab({ state, onUpdate, resetKey = 0, libraryEqu
                 <th></th>
               </tr></thead>
               <tbody>
-                {state.equipment.map((eq, i) => (
-                  <tr key={eq.id} {...sort.dragProps(i)} className={sort.rowClass(i)}>
-                    <td className="drag-h">&#9776;</td>
-                    <td><input type="text" key={eq.id + '-name-' + resetKey} defaultValue={eq.name ?? ''} onBlur={e => update(i, { name: e.target.value })} /></td>
-                    <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-capex-' + resetKey} defaultValue={eq.capex || ''} onBlur={e => update(i, { capex: parseFloat(e.target.value) || 0 })} /></td>
-                    <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-run-' + resetKey} defaultValue={eq.hourlyRunCost || ''} onBlur={e => update(i, { hourlyRunCost: parseFloat(e.target.value) || 0 })} /></td>
-                    <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-maint-' + resetKey} defaultValue={eq.annualMaintenance || ''} onBlur={e => update(i, { annualMaintenance: parseFloat(e.target.value) || 0 })} /></td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input type="checkbox" checked={eq.projectSpecific ?? false} onChange={e => update(i, { projectSpecific: e.target.checked })} />
-                    </td>
-                    <td><button className="btn btn-del btn-sm" onClick={() => deleteEquipment(i)}>✕</button></td>
-                  </tr>
-                ))}
+                {state.equipment.map((eq, i) => {
+                  const rowKey = (localResetKeys[eq.id] ?? 0);
+                  return (
+                    <tr key={eq.id} {...sort.dragProps(i)} className={sort.rowClass(i)}>
+                      <td className="drag-h">&#9776;</td>
+                      <td>
+                        <EquipmentNameInput
+                          value={eq.name ?? ''}
+                          libraryEquipment={libraryEquipment}
+                          onCommit={(name, extra) => {
+                            if (extra) {
+                              onUpdate({ ...state, equipment: state.equipment.map((e, idx) => idx === i ? { ...e, name, capex: extra.capex, hourlyRunCost: extra.hourlyRunCost, annualMaintenance: extra.annualMaintenance } : e) });
+                              setLocalResetKeys(prev => ({ ...prev, [eq.id]: (prev[eq.id] ?? 0) + 1 }));
+                            } else {
+                              update(i, { name });
+                            }
+                          }}
+                        />
+                      </td>
+                      <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-capex-' + resetKey + '-' + rowKey} defaultValue={eq.capex || ''} onBlur={e => update(i, { capex: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-run-' + resetKey + '-' + rowKey} defaultValue={eq.hourlyRunCost || ''} onBlur={e => update(i, { hourlyRunCost: parseFloat(e.target.value) || 0 })} /></td>
+                      <td><input type="number" min={0} step="any" placeholder="0" key={eq.id + '-maint-' + resetKey + '-' + rowKey} defaultValue={eq.annualMaintenance || ''} onBlur={e => update(i, { annualMaintenance: parseFloat(e.target.value) || 0 })} /></td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input type="checkbox" checked={eq.projectSpecific ?? false} onChange={e => update(i, { projectSpecific: e.target.checked })} />
+                      </td>
+                      <td><button className="btn btn-del btn-sm" onClick={() => deleteEquipment(i)}>✕</button></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
