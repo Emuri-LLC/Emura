@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import type { AppState, LaborRate, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
 import InfoIcon from '@/components/InfoIcon';
 import QuoteReview from '@/components/QuoteReview';
+import CostDrivers from '@/components/CostDrivers';
 import { uid } from '@/lib/state';
 
 interface Props {
@@ -219,6 +220,9 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
       onUpdate={onUpdate}
       onPushToLibrary={onPushToLibrary ?? (() => {})}
     />
+
+    {/* ── Top Cost Drivers ── */}
+    <CostDrivers state={state} />
 
     </>
   );

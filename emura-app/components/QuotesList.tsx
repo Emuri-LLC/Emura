@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { QuoteSummary, QuoteRevision } from '@/lib/db';
 import type { QuoteStatusEntry } from '@/lib/quoteStatus';
+import { fmtC } from '@/lib/format';
 
 interface Props {
   quotes:   QuoteSummary[];
@@ -14,6 +15,9 @@ interface Props {
   onDelete: (id: string) => void;
   statusCache?:         Record<string, QuoteStatusEntry | 'loading'>;
   onVisibleIdsChange?:  (ids: string[]) => void;
+  contentMatchIds?:     string[] | null;   // ids from a server content search, or null when inactive
+  contentSearching?:    boolean;
+  onContentSearch?:     (term: string) => void;
 }
 
 type SortKey = 'quoteNumber' | 'name' | 'customer' | 'updatedAt';
@@ -145,12 +149,17 @@ function RevRow({ label, bold, revNote, date, displayName, onClick }: {
 export default function QuotesList({
   quotes, userId, role, emailMap, onOpen, onNew, onDelete,
   statusCache = {}, onVisibleIdsChange,
+  contentMatchIds = null, contentSearching = false, onContentSearch,
 }: Props) {
   const canEdit = role === 'admin' || role === 'estimator';
   const [search,   setSearch]   = useState('');
   const [sortKey,  setSortKey]  = useState<SortKey>('updatedAt');
   const [sortAsc,  setSortAsc]  = useState(false);
   const [openRevs, setOpenRevs] = useState<string | null>(null);
+
+  // Advanced content search (separate from the name/customer quick filter)
+  const [advTerm,       setAdvTerm]       = useState('');
+  const [submittedTerm, setSubmittedTerm] = useState('');
 
   // Tooltip state
   const [hoveredDotId, setHoveredDotId] = useState<string | null>(null);
@@ -166,16 +175,7 @@ export default function QuotesList({
     else { setSortKey(key); setSortAsc(key === 'quoteNumber'); }
   }
 
-  const sq = search.toLowerCase();
-  const filtered = search
-    ? quotes.filter(q =>
-        q.name.toLowerCase().includes(sq) ||
-        q.customer.toLowerCase().includes(sq) ||
-        fmtQuoteNum(q.quoteNumber).toLowerCase().includes(sq)
-      )
-    : quotes;
-
-  const sorted = [...filtered].sort((a, b) => {
+  const sortQuotes = (list: QuoteSummary[]) => [...list].sort((a, b) => {
     let cmp = 0;
     switch (sortKey) {
       case 'quoteNumber': cmp = (a.quoteNumber ?? 0) - (b.quoteNumber ?? 0); break;
@@ -186,10 +186,50 @@ export default function QuotesList({
     return sortAsc ? cmp : -cmp;
   });
 
-  // Report visible IDs after a 350ms debounce — fires when filtered/sorted list stabilizes
-  const visibleKey = sorted.map(q => q.id).join(',');
+  // When a content search is active, results are two-tiered: name/customer
+  // matches first, then content-only matches (badged). Otherwise the quick
+  // filter (name/customer/number) applies as before.
+  const advActive = contentMatchIds != null && submittedTerm.trim() !== '';
+  const contentOnlyIds = new Set<string>();
+  let displayList: QuoteSummary[];
+  if (advActive) {
+    const term = submittedTerm.toLowerCase();
+    const matchesMeta = (q: QuoteSummary) =>
+      q.name.toLowerCase().includes(term) ||
+      q.customer.toLowerCase().includes(term) ||
+      fmtQuoteNum(q.quoteNumber).toLowerCase().includes(term);
+    const idSet = new Set(contentMatchIds);
+    const tier1 = sortQuotes(quotes.filter(matchesMeta));
+    const tier1Ids = new Set(tier1.map(q => q.id));
+    const tier2 = sortQuotes(quotes.filter(q => idSet.has(q.id) && !tier1Ids.has(q.id)));
+    tier2.forEach(q => contentOnlyIds.add(q.id));
+    displayList = [...tier1, ...tier2];
+  } else {
+    const sq = search.toLowerCase();
+    const filtered = search
+      ? quotes.filter(q =>
+          q.name.toLowerCase().includes(sq) ||
+          q.customer.toLowerCase().includes(sq) ||
+          fmtQuoteNum(q.quoteNumber).toLowerCase().includes(sq)
+        )
+      : quotes;
+    displayList = sortQuotes(filtered);
+  }
+
+  function submitContentSearch() {
+    setSubmittedTerm(advTerm);
+    onContentSearch?.(advTerm);
+  }
+  function clearContentSearch() {
+    setAdvTerm('');
+    setSubmittedTerm('');
+    onContentSearch?.('');
+  }
+
+  // Report visible IDs after a 350ms debounce — fires when the list stabilizes
+  const visibleKey = displayList.map(q => q.id).join(',');
   useEffect(() => {
-    const ids = sorted.map(q => q.id);
+    const ids = displayList.map(q => q.id);
     const t = setTimeout(() => visibleCbRef.current?.(ids), 350);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,11 +256,26 @@ export default function QuotesList({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="text"
-            placeholder="Search quotes…"
+            placeholder="Filter name / customer…"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, width: 170 }}
+          />
+          <input
+            type="text"
+            placeholder="Search within quotes…"
+            value={advTerm}
+            onChange={e => setAdvTerm(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submitContentSearch(); }}
+            title="Search part numbers, equipment, labor rates, and notes across all quotes"
             style={{ padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, width: 190 }}
           />
+          <button className="btn btn-neu btn-sm" onClick={submitContentSearch} disabled={contentSearching}>
+            {contentSearching ? '…' : 'Search'}
+          </button>
+          {advActive && (
+            <button className="btn btn-neu btn-sm" onClick={clearContentSearch}>Clear</button>
+          )}
           {canEdit && (
             <button className="btn btn-add btn-sm" onClick={onNew}>+ New Quote</button>
           )}
@@ -228,10 +283,11 @@ export default function QuotesList({
       </div>
 
       <div className="card-body" style={{ padding: 0 }}>
-        {sorted.length === 0 ? (
+        {displayList.length === 0 ? (
           <p className="empty-msg" style={{ padding: '24px 16px' }}>
             {quotes.length === 0
               ? (canEdit ? 'No quotes yet. Click + New Quote to get started.' : 'No quotes yet.')
+              : advActive ? `No quotes match "${submittedTerm}".`
               : 'No quotes match your search.'}
           </p>
         ) : (
@@ -242,15 +298,17 @@ export default function QuotesList({
                 <th style={{ ...thBase, textAlign: 'left',  width: 78   }} onClick={() => handleSort('quoteNumber')}>#&nbsp;{sortIndicator('quoteNumber', sortKey, sortAsc)}</th>
                 <th style={{ ...thBase, textAlign: 'left'               }} onClick={() => handleSort('name')}>Quote Name&nbsp;{sortIndicator('name', sortKey, sortAsc)}</th>
                 <th style={{ ...thBase, textAlign: 'left'               }} onClick={() => handleSort('customer')}>Customer&nbsp;{sortIndicator('customer', sortKey, sortAsc)}</th>
+                <th style={{ ...thBase, textAlign: 'right', cursor: 'default' }} title="Cost $/unit at the quote's primary FG + break (set on the Finished Goods tab)">Est. $/unit</th>
                 <th style={{ ...thBase, textAlign: 'right'              }} onClick={() => handleSort('updatedAt')}>Last Updated&nbsp;{sortIndicator('updatedAt', sortKey, sortAsc)}</th>
                 <th style={{ ...thBase, textAlign: 'right', cursor: 'default' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map(q => {
+              {displayList.map(q => {
                 const maxRev    = q.revisions[0]?.revNumber ?? 0;
                 const isRevOpen = openRevs === q.id;
                 const statusEntry = statusCache[q.id];
+                const contentOnly = contentOnlyIds.has(q.id);
 
                 // Dot color
                 let dotClass = '';
@@ -281,8 +339,18 @@ export default function QuotesList({
                       <td style={{ padding: '8px 12px', color: '#888', fontFamily: 'monospace', fontSize: 12 }}>
                         {fmtQuoteNum(q.quoteNumber)}
                       </td>
-                      <td style={{ padding: '8px 12px', fontWeight: 500 }}>{q.name || '—'}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 500 }}>
+                        {q.name || '—'}
+                        {contentOnly && (
+                          <span title="Matched inside the quote contents" style={{ marginLeft: 6, fontSize: 10, color: '#0369a1', background: '#e0f2fe', borderRadius: 3, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+                            in contents
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '8px 12px', color: '#555' }}>{q.customer || '—'}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#555', fontSize: 12, whiteSpace: 'nowrap' }}>
+                        {statusEntry && statusEntry !== 'loading' && statusEntry.primaryTotal != null ? fmtC(statusEntry.primaryTotal, 2) : '—'}
+                      </td>
                       <td style={{ padding: '8px 12px', textAlign: 'right', color: '#888', fontSize: 12, whiteSpace: 'nowrap' }}>
                         {fmtDate(q.updatedAt)}
                       </td>
@@ -307,7 +375,7 @@ export default function QuotesList({
 
                     {isRevOpen && (
                       <tr style={{ borderBottom: '1px solid #f0f2f5' }}>
-                        <td colSpan={6} style={{ padding: '4px 20px 10px 20px', background: '#f8fafc', borderTop: '1px dashed #e2e8f0' }}>
+                        <td colSpan={7} style={{ padding: '4px 20px 10px 20px', background: '#f8fafc', borderTop: '1px dashed #e2e8f0' }}>
                           <RevRow
                             label="Working Draft"
                             bold

@@ -5,7 +5,7 @@ import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState, LibraryPart, LibraryEquipment, LibraryLaborRate, ReviewItem } from '@/lib/calculations';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, searchQuotes, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
 import { QUOTE_STATUS_ENABLED, computeStatusEntry } from '@/lib/quoteStatus';
 import type { QuoteStatusEntry } from '@/lib/quoteStatus';
 import type { QuoteSummary } from '@/lib/db';
@@ -20,6 +20,7 @@ import SummaryTab        from '@/components/tabs/SummaryTab';
 import MfgSummaryTab     from '@/components/tabs/MfgSummaryTab';
 import QuotesList        from '@/components/QuotesList';
 import AdminDrawer       from '@/components/AdminDrawer';
+import RevisionCompare   from '@/components/RevisionCompare';
 import TabErrorBoundary  from '@/components/TabErrorBoundary';
 
 const TABS = [
@@ -45,6 +46,7 @@ export default function Home() {
   const [pendingRevClear, setPendingRevClear] = useState(false);
   const [resetKey, setResetKey]         = useState(0);
   const [adminOpen, setAdminOpen]       = useState(false);
+  const [compareOpen, setCompareOpen]   = useState(false);
   const [saveStatus, setSaveStatus]           = useState('Saved');
   const [loaded, setLoaded]                   = useState(false);
   const [libraryParts, setLibraryParts]       = useState<LibraryPart[]>([]);
@@ -56,6 +58,10 @@ export default function Home() {
   // Quote status indicators
   const [statusCache, setStatusCache] = useState<Record<string, QuoteStatusEntry | 'loading'>>({});
   const loadGenRef = useRef(0);
+
+  // Advanced content search (server-side over all org quotes)
+  const [contentMatchIds, setContentMatchIds] = useState<string[] | null>(null);
+  const [contentSearching, setContentSearching] = useState(false);
 
   // Debounce timer for cloud saves
   const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,6 +137,14 @@ export default function Home() {
         setLibraryEquip(le);
         setLibraryLaborRates(llr);
       }
+      // Invalidate this quote's cached status dot + est. cost so it recomputes
+      // when the list is next viewed (it goes stale after an edit otherwise).
+      setStatusCache(prev => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       setSaveStatus('Saved');
     }, 1000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -254,7 +268,7 @@ export default function Home() {
       );
       if (!bomItem) return;
       const entries = (appState.materialCosts[bomItem.id] ?? []).filter(
-        e => e.annualQty > 0 && e.cost > 0,
+        e => e.annualQty >= 0 && e.cost > 0,
       );
       await pushPartToLibrary(supabase, ctx.orgId, bomItem.partNumber, bomItem.description, bomItem.uom, entries);
     } else {
@@ -287,6 +301,14 @@ export default function Home() {
       const entry = computeStatusEntry(state, libraryParts, libraryEquipment);
       setStatusCache(prev => ({ ...prev, [id]: entry }));
     }));
+  }
+
+  async function handleContentSearch(term: string) {
+    if (!term.trim()) { setContentMatchIds(null); return; }
+    setContentSearching(true);
+    const ids = await searchQuotes(supabase, term);
+    setContentMatchIds(ids);
+    setContentSearching(false);
   }
 
   function handleExport() {
@@ -399,6 +421,9 @@ export default function Home() {
                   Save Revision
                 </button>
               )}
+              <button className="btn btn-neu btn-sm" onClick={() => setCompareOpen(true)}>
+                Compare
+              </button>
               <button className="btn btn-undo btn-sm"
                 onClick={handleUndo} disabled={history.length === 0}>
                 &#8630; Undo
@@ -434,6 +459,9 @@ export default function Home() {
             onDelete={handleDeleteQuote}
             statusCache={statusCache}
             onVisibleIdsChange={handleVisibleIdsChange}
+            contentMatchIds={contentMatchIds}
+            contentSearching={contentSearching}
+            onContentSearch={handleContentSearch}
           />
         </main>
       )}
@@ -463,6 +491,15 @@ export default function Home() {
           orgCtx={orgCtx}
           currentUserId={userId}
           onOrgRenamed={name => setOrgCtx(prev => prev ? { ...prev, orgName: name } : prev)}
+        />
+      )}
+
+      {compareOpen && quoteId && appState && (
+        <RevisionCompare
+          workingDraft={appState}
+          revisions={quotes.find(q => q.id === quoteId)?.revisions ?? []}
+          loadRevision={revId => loadQuoteRevision(supabase, revId)}
+          onClose={() => setCompareOpen(false)}
         />
       )}
     </div>

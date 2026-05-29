@@ -218,6 +218,17 @@ export async function deleteQuote(supabase: SupabaseClient, id: string): Promise
   await supabase.from('quotes').delete().eq('id', id);
 }
 
+// Content search across the org's quotes (server-side, JSONB). Matches part
+// numbers, equipment names, labor rate names, and estimator notes. Returns the
+// ids of matching quotes the caller can access (RLS-scoped via the RPC).
+export async function searchQuotes(supabase: SupabaseClient, term: string): Promise<string[]> {
+  const t = term.trim();
+  if (!t) return [];
+  const { data, error } = await supabase.rpc('search_quotes', { p_term: t });
+  if (error || !data) return [];
+  return (data as { quote_id: string }[]).map(r => r.quote_id);
+}
+
 // ── Parts & Equipment Library ─────────────────────────────────
 
 // Upserts all non-customer-supplied BOM items (and their cost entries) from a
@@ -297,7 +308,8 @@ export async function syncPartsToLibrary(
     if (partErr) { console.error('[library] part upsert failed:', partErr.message); continue; }
     if (!partRow) continue;
 
-    const entries = (state.materialCosts[item.id] ?? []).filter(e => e.annualQty > 0 && e.cost > 0);
+    // annualQty >= 0: a 0 tier is a "standard" flat price that applies at any volume.
+    const entries = (state.materialCosts[item.id] ?? []).filter(e => e.annualQty >= 0 && e.cost > 0);
     if (!entries.length) continue;
 
     const { error: priceErr } = await supabase
@@ -415,7 +427,7 @@ export async function pushPartToLibrary(
 
   if (error || !partRow) { console.error('[library] pushPart failed:', error?.message); return; }
 
-  const valid = entries.filter(e => e.annualQty > 0 && e.cost > 0);
+  const valid = entries.filter(e => e.annualQty >= 0 && e.cost > 0);
   if (!valid.length) return;
 
   const { error: priceErr } = await supabase

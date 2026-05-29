@@ -58,6 +58,8 @@ export function defaultState(): AppState {
     indirectOps: [],
     subcontracts: [],
     margins: {},
+    primaryFgId: '',
+    primaryBreakId: '',
   };
 }
 
@@ -113,6 +115,10 @@ export function migrateState(s: Record<string, unknown>): AppState {
   // Ensure revision note field exists (previously may have been 'A' or similar)
   if (!state.quote.revision) state.quote.revision = '';
 
+  // Primary FG + break selection (for summary stats / cost drivers)
+  if (state.primaryFgId === undefined)    state.primaryFgId = '';
+  if (state.primaryBreakId === undefined) state.primaryBreakId = '';
+
   // Breaks
   state.breaks.forEach(b => {
     if (b.totalEAU === undefined) b.totalEAU = 0;
@@ -126,6 +132,7 @@ export function migrateState(s: Record<string, unknown>): AppState {
     }
     delete raw['type'];
     if (item.customerSupplied === undefined) item.customerSupplied = false;
+    if (item.standard === undefined) item.standard = false;
     if (!item.fgQtys) item.fgQtys = {};
   });
 

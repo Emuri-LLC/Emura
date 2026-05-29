@@ -389,6 +389,33 @@ begin
   update org_invites set accepted_at = now() where id = v_invite.id;
 end; $$;
 
+-- ── Advanced (content) search over quotes ─────────────────────
+-- Extracts searchable text from a quote's state JSONB: estimator notes,
+-- BOM part numbers, equipment names, and labor rate names. Marked immutable
+-- so it can back an expression index.
+create or replace function quote_search_text(s jsonb)
+returns text language sql immutable as $$
+  select concat_ws(' ',
+    coalesce(s->'quote'->>'notes', ''),
+    (select string_agg(coalesce(b->>'partNumber', ''), ' ') from jsonb_array_elements(coalesce(s->'bom', '[]'::jsonb)) b),
+    (select string_agg(coalesce(e->>'name', ''), ' ') from jsonb_array_elements(coalesce(s->'equipment', '[]'::jsonb)) e),
+    (select string_agg(coalesce(r->>'name', ''), ' ') from jsonb_array_elements(coalesce(s->'laborRates', '[]'::jsonb)) r)
+  );
+$$;
+
+create index if not exists quotes_search_idx on public.quotes
+  using gin (to_tsvector('simple', quote_search_text(state)));
+
+-- Returns ids of quotes whose content matches the term (exact-token, 'simple'
+-- config). SECURITY INVOKER (default) so the quotes RLS policy scopes results
+-- to quotes the caller can already see.
+create or replace function search_quotes(p_term text)
+returns table(quote_id uuid) language sql stable as $$
+  select q.id from public.quotes q
+  where p_term is not null and length(trim(p_term)) > 0
+    and to_tsvector('simple', quote_search_text(q.state)) @@ plainto_tsquery('simple', p_term);
+$$;
+
 -- ── updated_at trigger on quotes ──────────────────────────────
 
 create or replace function touch_updated_at()

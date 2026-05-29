@@ -134,6 +134,7 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                   <th>Qty/Unit <InfoIcon k="bomQty" /></th>
                   <th style={{ textAlign: 'center' }}>FG-Spec <InfoIcon k="bomFgSpec" /></th>
                   <th style={{ textAlign: 'center' }}>Cust.Sup <InfoIcon k="bomCustSup" /></th>
+                  <th style={{ textAlign: 'center' }} title="Standard material — one flat price applies at any volume">Std</th>
                   <th></th>
                 </tr></thead>
                 <tbody>
@@ -181,6 +182,10 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                           <input type="checkbox" checked={item.customerSupplied ?? false} title="Customer Supplied — no cost"
                             onChange={e => updateItem(gi, { customerSupplied: e.target.checked })} />
                         </td>
+                        <td style={{ textAlign: 'center', width: 44 }}>
+                          <input type="checkbox" checked={item.standard ?? false} title="Standard material — one flat price applies at any volume"
+                            onChange={e => updateItem(gi, { standard: e.target.checked })} />
+                        </td>
                         <td><button className="btn btn-del btn-sm" onClick={() => deleteItem(gi)}>✕</button></td>
                       </tr>
                     );
@@ -211,6 +216,7 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                   {fgs.length > 0 ? fgHdr : <th>Qty/Unit</th>}
                   <th style={{ textAlign: 'center' }}>FG-Spec</th>
                   <th style={{ textAlign: 'center' }}>Cust.Sup</th>
+                  <th style={{ textAlign: 'center' }} title="Standard material — one flat price applies at any volume">Std</th>
                   <th></th>
                 </tr></thead>
                 <tbody>
@@ -261,6 +267,10 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
                         <td style={{ textAlign: 'center', width: 52 }}>
                           <input type="checkbox" checked={item.customerSupplied ?? false} title="Customer Supplied — no cost"
                             onChange={e => updateItem(gi, { customerSupplied: e.target.checked })} />
+                        </td>
+                        <td style={{ textAlign: 'center', width: 44 }}>
+                          <input type="checkbox" checked={item.standard ?? false} title="Standard material — one flat price applies at any volume"
+                            onChange={e => updateItem(gi, { standard: e.target.checked })} />
                         </td>
                         <td><button className="btn btn-del btn-sm" onClick={() => deleteItem(gi)}>✕</button></td>
                       </tr>
