@@ -25,6 +25,7 @@ export interface BOMItem {
   uom: string;
   fgSpecific: boolean;
   customerSupplied: boolean;
+  standard?: boolean; // "standard" material — one flat price applies at any volume (stored as a cost entry with annualQty=0)
   qty: number;
   fgQtys: Record<string, number>;
 }
@@ -114,6 +115,8 @@ export interface AppState {
   indirectOps: IndirectOp[];
   subcontracts: Subcontract[];
   margins: Record<string, number>;
+  primaryFgId?: string;    // selected "primary" finished good (id) for summary stats
+  primaryBreakId?: string; // selected "primary" volume break (id) for summary stats
 }
 
 // ── Parts & Equipment Library ─────────────────────────────────
@@ -430,6 +433,10 @@ export function findCost(
 ): { cost: number; flagged: boolean; actualQty: number } | null {
   const arch = state.materialCosts[rmId] || [];
   if (!arch.length || !tq) return null;
+  // "Standard" material: an entry with annualQty === 0 is a flat price that
+  // applies at any volume. It wins over any tiered entries.
+  const flat = arch.find(e => e.annualQty === 0);
+  if (flat) return { cost: flat.cost, flagged: false, actualQty: 0 };
   const ok = arch.filter(e => e.annualQty >= tq * 0.9 && e.annualQty <= tq * 10);
   if (!ok.length) return null;
   const best = ok.reduce((a, b) =>
@@ -740,5 +747,324 @@ export function getTaktBreakInfo(state: AppState, bki: number): TaktBreakInfo | 
     slowestCycleSec,
     taktExceeded: slowestCycleSec > taktSec && slowestCycleSec > 0,
   };
+}
+
+// ── Primary FG + Break ─────────────────────────────────────────
+// Resolves the selected "primary" finished good / volume break IDs to array
+// indices. Returns -1 for either when unset or no longer present.
+
+export function resolvePrimaryIndices(state: AppState): { fgi: number; bki: number } {
+  const fgi = state.primaryFgId ? state.finishedGoods.findIndex(f => f.id === state.primaryFgId) : -1;
+  const bki = state.primaryBreakId ? state.breaks.findIndex(b => b.id === state.primaryBreakId) : -1;
+  return { fgi, bki };
+}
+
+export interface OpThroughput {
+  opId: string;
+  pcPerHour: number;    // build qty ÷ total labor person-hours (run + setup, all operators)
+  personHours: number;  // total labor person-hours for one build of the primary FG
+}
+
+export interface ThroughputResult {
+  qty: number;             // units of the primary FG in one build at the primary break
+  ops: OpThroughput[];
+  linePcPerHour: number;   // qty ÷ Σ person-hours across all ops (each op treated as its own batch)
+  linePersonHours: number;
+}
+
+// Manufacturing throughput for the primary FG + break, expressed as an effective
+// labor rate. pc/hr is defined so that (build qty ÷ pc/hr) = total person-hours,
+// including setup, with every operator counted (per owner spec: total labor
+// content, batch per operation, not bottleneck-limited).
+export function computePrimaryThroughput(state: AppState, fgi: number, bki: number): ThroughputResult | null {
+  const fg = state.finishedGoods[fgi];
+  const brk = state.breaks[bki];
+  if (!fg || !brk) return null;
+  const qty = qtyPerBuild(state, fgi, bki);
+  if (qty <= 0) return null;
+
+  const ops: OpThroughput[] = [];
+  let lineHrs = 0;
+  for (const op of state.directOps) {
+    const operators = n(op.operators) || 1;
+    const ct = n(op.cycleTimeSec) / 3600;
+    const ls = n(op.lineSetupMin) / 60;
+    const os = n(op.orderSetupMin) / 60;
+    const runHrs   = ct * operators * qty;
+    const setupHrs = (ls + os) * operators;
+    const ph = runHrs + setupHrs;
+    ops.push({ opId: op.id, personHours: ph, pcPerHour: ph > 0 ? qty / ph : 0 });
+    lineHrs += ph;
+  }
+  return { qty, ops, linePersonHours: lineHrs, linePcPerHour: lineHrs > 0 ? qty / lineHrs : 0 };
+}
+
+// ── Cost drivers ───────────────────────────────────────────────
+// Annual-dollar contribution of each cost element, aggregated across all FGs at
+// a single volume break. Categories are derived by summing their drivers, so the
+// category totals always equal the sum of the listed individual drivers.
+
+export interface CostDriver { category: string; label: string; annualDollars: number; }
+export interface CostDriverCategory { category: string; annualDollars: number; pct: number; }
+export interface CostDriverResult {
+  bki: number;
+  breakLabel: string;
+  totalAnnual: number;
+  categories: CostDriverCategory[];
+  drivers: CostDriver[]; // all individual drivers, sorted desc by annual $
+}
+
+const DRIVER_CATEGORIES = ['Material', 'Direct Labor', 'Equipment', 'Indirect Labor', 'Subcontract'] as const;
+
+export function computeCostDrivers(state: AppState, bki: number): CostDriverResult | null {
+  const brk = state.breaks[bki];
+  if (!brk) return null;
+
+  const drivers: CostDriver[] = [];
+  const tau  = totalAnnualUnits(state, bki);
+  const toq  = totalOrderQty(state, bki);
+  const bpy  = n(brk.buildsPerYear);
+  const cyrs = n(state.settings.capexYears) || 1;
+
+  // Material — per BOM line
+  for (const item of state.bom) {
+    if (item.customerSupplied) continue;
+    const aq = annualPurchQty(state, item, bki);
+    const found = findCost(state, item.id, aq);
+    if (!found) continue;
+    let annual = 0;
+    for (const fg of state.finishedGoods) {
+      const eau = n((fg.breaks[bki] || {}).eau);
+      const bq  = bomQtyForFG(item, fg.id);
+      if (eau && bq) annual += bq * found.cost * eau;
+    }
+    if (annual > 0) drivers.push({ category: 'Material', label: item.partNumber || item.description || '(unnamed part)', annualDollars: annual });
+  }
+
+  // Direct labor — per op (run + line + order setup, excl. equipment)
+  for (const op of state.directOps) {
+    const operators = n(op.operators) || 1;
+    const ct = n(op.cycleTimeSec) / 3600;
+    const ls = n(op.lineSetupMin) / 60;
+    const os = n(op.orderSetupMin) / 60;
+    const rate = resolveDirectRate(state, op);
+    let annual = 0;
+    for (let fgi = 0; fgi < state.finishedGoods.length; fgi++) {
+      const eau = n((state.finishedGoods[fgi].breaks[bki] || {}).eau);
+      if (!eau) continue;
+      const qpb = qtyPerBuild(state, fgi, bki);
+      let perUnit = ct * rate * operators;
+      if (qpb > 0) perUnit += ls * rate * operators / qpb;
+      if (toq > 0) perUnit += os * rate * operators / toq;
+      annual += perUnit * eau;
+    }
+    if (annual > 0) drivers.push({ category: 'Direct Labor', label: op.name || '(unnamed op)', annualDollars: annual });
+  }
+
+  // Equipment — per equipment used by ops (run + amortized capex + maintenance)
+  const utilMap = buildEquipUtilMap(state, bki);
+  const runPerUnit = new Map<string, number>();
+  for (const op of state.directOps) {
+    const ct = n(op.cycleTimeSec) / 3600;
+    for (const eqId of op.equipmentIds || []) {
+      const eq = state.equipment.find(e => e.id === eqId);
+      if (!eq) continue;
+      runPerUnit.set(eqId, (runPerUnit.get(eqId) ?? 0) + n(eq.hourlyRunCost) * ct);
+    }
+  }
+  for (const [eqId, util] of utilMap) {
+    const eq = state.equipment.find(e => e.id === eqId);
+    if (!eq) continue;
+    let annual = (runPerUnit.get(eqId) ?? 0) * tau;
+    if (eq.projectSpecific) annual += n(eq.capex) + n(eq.annualMaintenance);
+    else annual += (n(eq.capex) / cyrs) * util + n(eq.annualMaintenance) * util;
+    if (annual > 0) drivers.push({ category: 'Equipment', label: eq.name || '(unnamed equip)', annualDollars: annual });
+  }
+
+  // Indirect labor — per op
+  for (const op of state.indirectOps) {
+    const rate = resolveIndirectRate(state, op);
+    let annual = 0;
+    for (const fg of state.finishedGoods) {
+      const eau = n((fg.breaks[bki] || {}).eau);
+      if (!eau) continue;
+      let perUnit = 0;
+      if (tau > 0) perUnit += n(op.annualHours) * rate / tau;
+      perUnit += n(op.lineSetupHrs) * bpy * rate / eau;
+      if (toq > 0) perUnit += n(op.orderSetupHrs) * rate / toq;
+      annual += perUnit * eau;
+    }
+    if (annual > 0) drivers.push({ category: 'Indirect Labor', label: op.name || '(unnamed)', annualDollars: annual });
+  }
+
+  // Subcontract — per entry
+  for (const s of state.subcontracts) {
+    let annual = 0;
+    for (let fgi = 0; fgi < state.finishedGoods.length; fgi++) {
+      const eau = n((state.finishedGoods[fgi].breaks[bki] || {}).eau);
+      if (!eau) continue;
+      const qpb = qtyPerBuild(state, fgi, bki);
+      let perUnit = n(s.priceEach);
+      if (qpb > 0) perUnit += n(s.pricePerLine) / qpb;
+      if (toq > 0) perUnit += n(s.pricePerOrder) / toq;
+      if (tau > 0) perUnit += n(s.pricePerYear) / tau;
+      annual += perUnit * eau;
+    }
+    if (annual > 0) drivers.push({ category: 'Subcontract', label: s.name || '(unnamed)', annualDollars: annual });
+  }
+
+  drivers.sort((a, b) => b.annualDollars - a.annualDollars);
+
+  const totalAnnual = drivers.reduce((sum, d) => sum + d.annualDollars, 0);
+  const categories: CostDriverCategory[] = DRIVER_CATEGORIES
+    .map(cat => {
+      const annualDollars = drivers.filter(d => d.category === cat).reduce((sum, d) => sum + d.annualDollars, 0);
+      return { category: cat, annualDollars, pct: totalAnnual > 0 ? (annualDollars / totalAnnual) * 100 : 0 };
+    })
+    .filter(c => c.annualDollars > 0);
+
+  return { bki, breakLabel: brk.label, totalAnnual, categories, drivers };
+}
+
+// ── Revision compare ───────────────────────────────────────────
+// Field-by-field diff between two AppState snapshots, plus cost deltas per FG
+// per break. Entities are matched by id; a renamed entity shows as a changed
+// "Name" field, while a truly added/removed entity is listed by name only.
+
+export interface FieldChange { label: string; from: string; to: string; }
+export interface DiffSection {
+  title: string;
+  added: string[];
+  removed: string[];
+  changed: { name: string; fields: FieldChange[] }[];
+}
+export interface RevCostDelta {
+  fgName: string;
+  breakLabel: string;
+  fromTotal: number;
+  toTotal: number;
+  fromAnnual: number;
+  toAnnual: number;
+}
+export interface RevisionDiff {
+  sections: DiffSection[];
+  costDeltas: RevCostDelta[];
+  fromAnnualTotal: number;
+  toAnnualTotal: number;
+}
+
+function diffEntities<T extends { id: string }>(
+  title: string,
+  from: T[],
+  to: T[],
+  nameOf: (t: T) => string,
+  fieldsOf: (t: T) => Record<string, string>,
+): DiffSection {
+  const section: DiffSection = { title, added: [], removed: [], changed: [] };
+  const fromMap = new Map(from.map(t => [t.id, t]));
+  const toMap   = new Map(to.map(t => [t.id, t]));
+  for (const t of from) if (!toMap.has(t.id))   section.removed.push(nameOf(t));
+  for (const t of to)   if (!fromMap.has(t.id)) section.added.push(nameOf(t));
+  for (const t of to) {
+    const prev = fromMap.get(t.id);
+    if (!prev) continue;
+    const pf = fieldsOf(prev), nf = fieldsOf(t);
+    const fields: FieldChange[] = [];
+    for (const key of new Set([...Object.keys(pf), ...Object.keys(nf)])) {
+      const a = pf[key] ?? '', b = nf[key] ?? '';
+      if (a !== b) fields.push({ label: key, from: a, to: b });
+    }
+    if (fields.length) section.changed.push({ name: nameOf(t), fields });
+  }
+  return section;
+}
+
+export function computeRevisionDiff(a: AppState, b: AppState): RevisionDiff {
+  const num = (v: unknown) => { const x = n(v); return Number.isInteger(x) ? String(x) : x.toFixed(2); };
+  const sections: DiffSection[] = [];
+
+  // Quote info & settings (single entity)
+  const quoteFields: FieldChange[] = [];
+  const qf = (label: string, av: string, bv: string) => { if ((av ?? '') !== (bv ?? '')) quoteFields.push({ label, from: av ?? '', to: bv ?? '' }); };
+  qf('Quote name', a.quote.name, b.quote.name);
+  qf('Customer', a.quote.customer, b.quote.customer);
+  qf('Date', a.quote.date, b.quote.date);
+  qf('Working hrs/yr', num(a.settings.workingHoursPerYear), num(b.settings.workingHoursPerYear));
+  qf('CapEx years', num(a.settings.capexYears), num(b.settings.capexYears));
+  if (quoteFields.length) sections.push({ title: 'Quote Info & Settings', added: [], removed: [], changed: [{ name: '', fields: quoteFields }] });
+
+  sections.push(diffEntities('Labor Rates', a.laborRates ?? [], b.laborRates ?? [],
+    r => r.name || '(unnamed)',
+    r => ({ Name: r.name, '$/hr': num(r.rate) })));
+
+  sections.push(diffEntities('Volume Breaks', a.breaks, b.breaks,
+    br => br.label || '(unnamed)',
+    br => ({ Label: br.label, 'Builds/yr': num(br.buildsPerYear), 'Target EAU': num(br.totalEAU) })));
+
+  const breakLabel = (st: AppState, i: number) => st.breaks[i]?.label || `Break ${i + 1}`;
+  sections.push(diffEntities('Finished Goods', a.finishedGoods, b.finishedGoods,
+    fg => fg.name || '(unnamed)',
+    fg => {
+      const o: Record<string, string> = { Name: fg.name, Description: fg.description };
+      fg.breaks.forEach((br, i) => { if (br && br.eau != null) o[`EAU ${breakLabel(b, i)}`] = num(br.eau); });
+      return o;
+    }));
+
+  sections.push(diffEntities('Bill of Materials', a.bom, b.bom,
+    it => it.partNumber || it.description || '(unnamed)',
+    it => ({
+      'Part #': it.partNumber, Description: it.description, UOM: it.uom,
+      Qty: num(it.qty), 'FG-specific': it.fgSpecific ? 'yes' : 'no',
+      'Cust. supplied': it.customerSupplied ? 'yes' : 'no',
+      Standard: it.standard ? 'yes' : 'no',
+      'FG qtys': JSON.stringify(it.fgQtys || {}),
+    })));
+
+  sections.push(diffEntities('Equipment', a.equipment, b.equipment,
+    e => e.name || '(unnamed)',
+    e => ({ Name: e.name, CapEx: num(e.capex), 'Run $/hr': num(e.hourlyRunCost), Maintenance: num(e.annualMaintenance), 'Project-specific': e.projectSpecific ? 'yes' : 'no' })));
+
+  const rateNameMap = new Map<string, string>();
+  for (const r of a.laborRates ?? []) rateNameMap.set(r.id, r.name);
+  for (const r of b.laborRates ?? []) rateNameMap.set(r.id, r.name);
+  const rateName = (id?: string) => id ? (rateNameMap.get(id) ?? '(default)') : '(default)';
+
+  sections.push(diffEntities('Direct Operations', a.directOps, b.directOps,
+    op => op.name || '(unnamed)',
+    op => ({ Name: op.name, Rate: rateName(op.rateId), Operators: num(op.operators), 'Cycle (s)': num(op.cycleTimeSec), 'Order setup (min)': num(op.orderSetupMin), 'Line setup (min)': num(op.lineSetupMin), Equipment: String((op.equipmentIds || []).length) })));
+
+  sections.push(diffEntities('Indirect Operations', a.indirectOps, b.indirectOps,
+    op => op.name || '(unnamed)',
+    op => ({ Name: op.name, Rate: rateName(op.rateId), 'Annual hrs': num(op.annualHours), 'Order setup (hrs)': num(op.orderSetupHrs), 'Line setup (hrs)': num(op.lineSetupHrs) })));
+
+  sections.push(diffEntities('Subcontracts', a.subcontracts, b.subcontracts,
+    s => s.name || '(unnamed)',
+    s => ({ Name: s.name, '$/each': num(s.priceEach), '$/line': num(s.pricePerLine), '$/order': num(s.pricePerOrder), '$/year': num(s.pricePerYear) })));
+
+  // Cost deltas — per FG (matched by id) per break (matched by id)
+  const costDeltas: RevCostDelta[] = [];
+  let fromAnnualTotal = 0, toAnnualTotal = 0;
+  const aFgIdx = new Map(a.finishedGoods.map((fg, i) => [fg.id, i]));
+  b.finishedGoods.forEach((fg, bFgi) => {
+    const aFgi = aFgIdx.get(fg.id);
+    b.breaks.forEach((brk, bki) => {
+      const cb = calcCosts(b, bFgi, bki);
+      if (!cb || cb.eau <= 0) return;
+      let fromTotal = 0, fromAnnual = 0;
+      if (aFgi != null) {
+        const aBki = a.breaks.findIndex(x => x.id === brk.id);
+        if (aBki >= 0) {
+          const ca = calcCosts(a, aFgi, aBki);
+          if (ca && ca.eau > 0) { fromTotal = ca.total; fromAnnual = ca.total * ca.eau; }
+        }
+      }
+      const toAnnual = cb.total * cb.eau;
+      fromAnnualTotal += fromAnnual;
+      toAnnualTotal   += toAnnual;
+      costDeltas.push({ fgName: fg.name || '(unnamed)', breakLabel: brk.label, fromTotal, toTotal: cb.total, fromAnnual, toAnnual });
+    });
+  });
+
+  return { sections: sections.filter(s => s.added.length || s.removed.length || s.changed.length), costDeltas, fromAnnualTotal, toAnnualTotal };
 }
 

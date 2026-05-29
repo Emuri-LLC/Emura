@@ -85,6 +85,10 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
     onUpdate({ ...state, finishedGoods: fgs, bom });
   }
 
+  function setPrimary(field: 'primaryFgId' | 'primaryBreakId', value: string) {
+    onUpdate({ ...state, [field]: value });
+  }
+
   // Sum row display
   function sumCell(j: number) {
     const sum = totalAnnualUnits(state.finishedGoods, j);
@@ -140,6 +144,27 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
           <button className="btn btn-add btn-sm" onClick={addFG}>+ Add FG</button>
         </div>
         <div className="card-body">
+          {/* Primary selection: drives quote-list cost, operations pc/hr helpers, and cost drivers */}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: '#1a2940' }}>Primary FG + Break</span>
+            <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, color: '#555' }}>
+              SKU
+              <select value={state.primaryFgId ?? ''} onChange={e => setPrimary('primaryFgId', e.target.value)}
+                style={{ padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}>
+                <option value="">—</option>
+                {state.finishedGoods.map(fg => <option key={fg.id} value={fg.id}>{fg.name || '(unnamed)'}</option>)}
+              </select>
+            </label>
+            <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, color: '#555' }}>
+              Break
+              <select value={state.primaryBreakId ?? ''} onChange={e => setPrimary('primaryBreakId', e.target.value)}
+                style={{ padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}>
+                <option value="">—</option>
+                {state.breaks.map(b => <option key={b.id} value={b.id}>{b.label || '(unnamed)'}</option>)}
+              </select>
+            </label>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Used for the quote-list cost, Operations rate helpers, and Cost Drivers.</span>
+          </div>
           {state.finishedGoods.length === 0 && <p className="empty-msg">No finished goods yet.</p>}
           {state.finishedGoods.length > 0 && (
             <div style={{ overflowX: 'auto' }}>

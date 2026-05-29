@@ -34,6 +34,15 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
     onUpdate(updated);
   }
 
+  // Standard materials use a single flat price stored as an annualQty=0 entry.
+  function handleFlatCostChange(item: BOMItem, value: string) {
+    const cost = parseFloat(value);
+    if (isNaN(cost)) return;
+    const updated = { ...state, materialCosts: { ...state.materialCosts } };
+    setCost(updated, item.id, 0, cost);
+    onUpdate(updated);
+  }
+
   function handleSourceChange(item: BOMItem, j: number, value: string) {
     const key = `${item.id}|${j}`;
     onUpdate({ ...state, materialSources: { ...state.materialSources, [key]: value } });
@@ -71,7 +80,28 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
               {brkHdr}
             </tr></thead>
             <tbody>
-              {costable.map(item => (
+              {costable.map(item => {
+                if (item.standard) {
+                  const flat = (state.materialCosts[item.id] ?? []).find(e => e.annualQty === 0);
+                  return (
+                    <tr key={item.id}>
+                      <td>{item.partNumber || '—'}</td>
+                      <td>{item.description || '—'}</td>
+                      <td>{item.uom || ''}</td>
+                      <td colSpan={state.breaks.length} className="mcell">
+                        <div className="mcell-qty" style={{ color: '#0369a1' }}>Standard — flat price at any volume</div>
+                        <input
+                          type="number" min={0} step="any"
+                          style={{ maxWidth: 120 }}
+                          key={item.id + '-flat-' + resetKey}
+                          defaultValue={flat ? flat.cost : ''}
+                          onBlur={e => handleFlatCostChange(item, e.target.value)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                }
+                return (
                 <tr key={item.id}>
                   <td>{item.partNumber || '—'}</td>
                   <td>{item.description || '—'}</td>
@@ -118,7 +148,8 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

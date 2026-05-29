@@ -169,7 +169,6 @@ export default function MfgSummaryTab({ state }: Props) {
     ['Line setup hrs / year', r => fmtH(r.lineSetupHrsPerYear)],
     ['Order setup hrs / year',r => fmtH(r.orderSetupHrsPerYear)],
     ['Total hrs / year',      r => fmtH(r.totalHrsPerYear)],
-    ['Setup %',               r => fmtP(r.setupPct)],
   ];
   if (state.indirectOps.length === 0) {
     ilRows.push(

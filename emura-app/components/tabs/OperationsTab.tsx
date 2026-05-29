@@ -5,9 +5,9 @@ import InfoIcon from '@/components/InfoIcon';
 import EquipmentSelector from '@/components/EquipmentSelector';
 import LaborRateSelector from '@/components/LaborRateSelector';
 import type { AppState, DirectOp, IndirectOp, Subcontract, LaborRate, LibraryLaborRate } from '@/lib/calculations';
-import { getTaktInfo } from '@/lib/calculations';
+import { getTaktInfo, resolvePrimaryIndices, computePrimaryThroughput } from '@/lib/calculations';
 import { uid } from '@/lib/state';
-import { fmtN } from '@/lib/format';
+import { fmtN, fmtH } from '@/lib/format';
 
 interface Props {
   state: AppState;
@@ -69,6 +69,13 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
     return newRate.id;
   }
 
+  // ── Primary FG/break throughput helpers (grey pc/hr numbers) ──
+  const { fgi: pFgi, bki: pBki } = resolvePrimaryIndices(state);
+  const throughput = (pFgi >= 0 && pBki >= 0) ? computePrimaryThroughput(state, pFgi, pBki) : null;
+  const opThru = new Map((throughput?.ops ?? []).map(o => [o.opId, o]));
+  const primaryFg  = pFgi >= 0 ? state.finishedGoods[pFgi] : null;
+  const primaryBrk = pBki >= 0 ? state.breaks[pBki] : null;
+
   // ── Takt notice ─────────────────────────────────────────────
   const takt = getTaktInfo(state);
   let taktEl: React.ReactNode = null;
@@ -104,6 +111,13 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
             <div className="inline-warn">No labor rates defined — operations will cost $0. Add rates on the Quote Info tab.</div>
           )}
           {taktEl}
+          {throughput && primaryFg && primaryBrk && (
+            <div className="inline-info">
+              Primary: <b>{primaryFg.name || '(unnamed)'}</b> @ <b>{primaryBrk.label}</b> ({fmtN(throughput.qty)} units/build).{' '}
+              Line labor rate: <b>{fmtN(throughput.linePcPerHour, 1)} pc/hr</b>{' '}
+              ({fmtH(throughput.linePersonHours)} person-hrs/build incl. setup, all operators). Grey numbers below are per-operation rates.
+            </div>
+          )}
           {state.directOps.length === 0 && <p className="empty-msg">No direct labor operations.</p>}
           {state.directOps.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
@@ -124,7 +138,14 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
                   {state.directOps.map((op, i) => (
                     <tr key={op.id} {...dlSort.dragProps(i)} className={dlSort.rowClass(i)}>
                       <td className="drag-h">&#9776;</td>
-                      <td className="op-name"><input type="text" key={op.id + '-name-' + resetKey} defaultValue={op.name ?? ''} onBlur={e => setDL(i, { name: e.target.value })} /></td>
+                      <td className="op-name">
+                        <input type="text" key={op.id + '-name-' + resetKey} defaultValue={op.name ?? ''} onBlur={e => setDL(i, { name: e.target.value })} />
+                        {opThru.has(op.id) && (
+                          <div style={{ fontSize: 10, color: '#999', marginTop: 2 }} title="pieces per labor-hour at the primary FG+break, incl. setup, all operators">
+                            {fmtN(opThru.get(op.id)!.pcPerHour, 1)} pc/hr
+                          </div>
+                        )}
+                      </td>
                       <td style={{ minWidth: 130 }}>
                         <LaborRateSelector
                           selectedId={op.rateId ?? ''}
