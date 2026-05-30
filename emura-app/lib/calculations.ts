@@ -921,7 +921,8 @@ export function computeCostDrivers(state: AppState, bki: number): CostDriverResu
       const annualDollars = drivers.filter(d => d.category === cat).reduce((sum, d) => sum + d.annualDollars, 0);
       return { category: cat, annualDollars, pct: totalAnnual > 0 ? (annualDollars / totalAnnual) * 100 : 0 };
     })
-    .filter(c => c.annualDollars > 0);
+    .filter(c => c.annualDollars > 0)
+    .sort((a, b) => b.annualDollars - a.annualDollars);
 
   return { bki, breakLabel: brk.label, totalAnnual, categories, drivers };
 }

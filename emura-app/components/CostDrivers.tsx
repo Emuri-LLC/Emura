@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { AppState } from '@/lib/calculations';
 import { computeCostDrivers, resolvePrimaryIndices, totalAnnualUnits } from '@/lib/calculations';
 import { fmtC, fmtP } from '@/lib/format';
@@ -21,7 +21,10 @@ const CAT_COLORS: Record<string, string> = {
 // primary volume break (falls back to the highest-volume break when unset).
 // Category-level and individual-level breakdowns are shown separately. Both are
 // real <table>s so the estimator can drag-select and paste into an email.
+const DRIVER_CAP = 7;
+
 export default function CostDrivers({ state }: Props) {
+  const [showAll, setShowAll] = useState(false);
   const result = useMemo(() => {
     let { bki } = resolvePrimaryIndices(state);
     if (bki < 0) {
@@ -48,8 +51,8 @@ export default function CostDrivers({ state }: Props) {
   }
 
   const maxCat     = Math.max(...result.categories.map(c => c.annualDollars), 1);
-  const topDrivers = result.drivers.slice(0, 12);
-  const maxDriver  = Math.max(...topDrivers.map(d => d.annualDollars), 1);
+  const shown      = showAll ? result.drivers : result.drivers.slice(0, DRIVER_CAP);
+  const maxDriver  = result.drivers[0]?.annualDollars ?? 1; // drivers are sorted desc
 
   return (
     <div className="card">
@@ -105,7 +108,7 @@ export default function CostDrivers({ state }: Props) {
             </tr>
           </thead>
           <tbody>
-            {topDrivers.map((d, i) => (
+            {shown.map((d, i) => (
               <tr key={i} style={{ borderBottom: '1px solid #f0f2f5' }}>
                 <td style={{ padding: '6px 8px', fontWeight: 500 }}>{d.label}</td>
                 <td style={{ padding: '6px 8px', color: '#555' }}>{d.category}</td>
@@ -120,8 +123,14 @@ export default function CostDrivers({ state }: Props) {
             ))}
           </tbody>
         </table>
-        {result.drivers.length > topDrivers.length && (
-          <div style={{ color: '#9ca3af', marginTop: 6, fontSize: 11 }}>…and {result.drivers.length - topDrivers.length} more</div>
+        {result.drivers.length > DRIVER_CAP && (
+          <button
+            className="btn btn-neu btn-sm"
+            style={{ marginTop: 8 }}
+            onClick={() => setShowAll(s => !s)}
+          >
+            {showAll ? `Show top ${DRIVER_CAP}` : `Show all (${result.drivers.length})`}
+          </button>
         )}
 
       </div>
