@@ -30,7 +30,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </head>
 <body>
 <h1>Emura — Manufacturing Cost Estimator</h1>
-<p class="subtitle">Product Specification — Version 0.6 — May 2026</p>
+<p class="subtitle">Product Specification — Version 0.7 — May 2026</p>
 <nav>
   <a href="#s1">1 Overview</a><a href="#s2">2 Concepts</a><a href="#s3">3 Modules</a>
   <a href="#s4">4 Data Model</a><a href="#s5">5 Calculations</a><a href="#s6">6 UX</a>
@@ -66,6 +66,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <h3>1.3 Quotes and Cloud Save</h3>
 <p>Quotes are stored in the cloud and tied to your account, accessible from any device or browser. The app opens to a <strong>My Quotes</strong> list showing all quotes you have access to. Click a quote to open it, or click <strong>+ New Quote</strong> to create one. A <strong>← Quotes</strong> button in the header returns you to the list without losing your work.</p>
 <p>Quotes auto-save to the cloud as you work (with a 1-second debounce). A save status indicator in the header confirms when changes have been synced. Your browser's local storage also holds a copy as an offline fallback. Use <strong>Export</strong> to download a JSON backup and <strong>Import</strong> to restore one.</p>
+<p>The My Quotes list shows a status dot (warnings / library findings) and an <strong>Est. $/unit</strong> column — the cost per unit at the quote's <em>primary FG + break</em> (see §2.7) — for each row, lazy-loaded as rows scroll into view and refreshed automatically when you return to the list after editing. Two search controls sit in the list header: a quick <strong>filter</strong> (name / customer / quote number, instant and client-side) and a separate <strong>Search within quotes</strong> box that performs a server-side content search across all quotes you can access — matching part numbers, equipment names, labor rate names, and estimator notes. Content-search results list name/customer matches first, then content-only matches (badged "in contents"). Useful for "which quotes use part X / machine Y?".</p>
 
 <h3>1.4 Organizations, Sites, and Departments</h3>
 <p>Every account belongs to an organization. Organizations are divided into <strong>sites</strong> (facilities or plants) and each site contains <strong>departments</strong>. Quotes are owned by a department. Users belong to an organization with one of three roles:</p>
@@ -112,6 +113,15 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </ul>
 <p><strong>Project-Specific</strong> equipment (tooling, fixtures, one-time purchases) spreads CapEx and maintenance directly over annual units (EAU) rather than by utilization percentage.</p>
 <p>Equipment utilization accounts for all time the equipment is occupied: cycle time during production, order setups, and line setups for all FGs.</p>
+
+<h3>2.7 Primary FG + Break</h3>
+<p>Each quote may designate one finished good and one volume break as the <strong>primary</strong> combination, selected from two dropdowns on the Finished Goods tab. The primary selection is a single representative scenario used to drive summary-level statistics without picking through the full FG × break matrix. It powers three things:</p>
+<ul>
+  <li>The <strong>Est. $/unit</strong> column in the My Quotes list (cost per unit at the primary FG + break).</li>
+  <li>The grey <strong>pc/hr</strong> labor-rate helpers on the Operations tab (see §3.6.1).</li>
+  <li>The default scope of the <strong>Cost Drivers</strong> panel (see §3.1) — which break is summarized.</li>
+</ul>
+<p>The primary selection is optional; when unset, the Est. $/unit column is blank, the pc/hr helpers are hidden, and Cost Drivers falls back to the highest-volume break.</p>
 
 <h2 id="s3">3. Application Modules</h2>
 
@@ -171,6 +181,14 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </table>
 <p>Warnings appear above the library comparison findings in the Quote Review card. The header shows a count badge for warnings (amber) and for library findings (red/green) independently.</p>
 
+<h4>Top Cost Drivers</h4>
+<p>A read-only panel below Quote Review on the Quote Info tab. It ranks where the money goes, expressed in <strong>annual dollars aggregated across all finished goods</strong> at the primary volume break (§2.7; falls back to the highest-volume break when no primary is set). It is purely informational — no inputs, nothing to undo.</p>
+<ul>
+  <li><strong>Category view</strong> — Material, Direct Labor, Equipment (split out from direct labor), Indirect Labor, and Subcontract, each with annual $, % of total, and a proportional bar, sorted highest to lowest. Category totals always equal the sum of their individual drivers, and reconcile with the Summary tab.</li>
+  <li><strong>Individual drivers</strong> — the same spend broken down to individual BOM lines, operations, equipment, and subcontracts, sorted highest to lowest. Capped at the top 7 with a <strong>Show all</strong> toggle.</li>
+</ul>
+<p>Both are rendered as real tables (with simple CSS bars, no charting library) so the estimator can drag-select and paste the figures straight into an email to explain primary cost drivers.</p>
+
 <h3>3.2 Finished Goods</h3>
 <ul>
   <li>Each row is a finished good: name, description, and EAU per break column</li>
@@ -178,6 +196,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   <li>When target EAU is set on a column with no FG data, mix auto-fills from the leftmost populated column's proportions</li>
   <li>"→ Push mix" button on any filled column applies that column's FG proportions to all other columns that have a target set</li>
   <li>All rows support drag-to-reorder</li>
+  <li><strong>Primary FG + Break</strong> selector (two dropdowns above the table): designates the representative FG/break combination used for the Est. $/unit column, Operations pc/hr helpers, and Cost Drivers scope (§2.7)</li>
 </ul>
 
 <h3>3.3 Bill of Materials</h3>
@@ -189,6 +208,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td>Qty/Unit</td><td>Quantity consumed per finished good. Fractions accepted (e.g. "1/4" → 0.25). Committed on blur, not on each keystroke.</td></tr>
 <tr><td>FG-Spec (checkbox)</td><td>When checked, moves item to the FG-Specific section — each FG then has its own quantity column</td></tr>
 <tr><td>Cust.Sup (checkbox)</td><td>Customer-supplied: excluded from Material Costs and all cost calculations. Row grayed out as a visual reminder.  Cost data is stored while a part is flagged customer supplied, meaning it can be temporarily "turned off" then turned back on.</td></tr>
+<tr><td>Std (checkbox)</td><td>Standard material: a single flat price applies at any volume (see §3.4). Use for stock items whose unit cost does not change with order quantity (e.g. a standard paper bag at $0.10 regardless of volume).</td></tr>
 </table>
 <p>All BOM rows support drag-to-reorder within their section.</p>
 
@@ -210,6 +230,9 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   <li>Costs matching within 2% of the current quantity are shown without any flag</li>
 </ul>
 <p>This allows a single quote to contain costs sourced at different volumes without losing prior data when volume assumptions change.</p>
+
+<h4>Standard (flat-price) materials</h4>
+<p>A BOM item flagged <strong>Std</strong> (§3.3) is priced once and that price applies at every volume break — proximity matching and volume tiers are bypassed. Standard items show a single flat-price input on the Material Costs tab instead of one cell per break. Internally the flat price is stored as a cost-archive entry at annual quantity 0, which the cost engine treats as a wildcard for any volume, and which syncs to the parts library as a <code>min_qty = 0</code> tier (applies to all quantities).</p>
 
 <h3>3.5 Equipment</h3>
 <table><tr><th>Field</th><th>Description</th></tr>
@@ -235,6 +258,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td>Equipment</td><td>Searchable multi-select. Type to filter existing equipment; selecting adds it. Type a new name and choose "Add as new" to create an entry on the Equipment tab simultaneously. Selected items shown as chips; chips for equipment with no defined attributes shown in orange with ⚠.</td></tr>
 <tr><td>Notes</td><td>Free-text; supports multi-line (Shift+Enter or Enter)</td></tr>
 </table>
+<p>When a <strong>primary FG + break</strong> is selected (§2.7), each direct operation shows a grey <strong>pc/hr</strong> helper beneath its name, and a banner above the table shows the combined line rate. The pc/hr figure is a labor-inclusive throughput: build quantity ÷ total person-hours for that operation, counting run time plus order and line setup, with every operator included. Dividing an order quantity by the pc/hr therefore yields the total labor person-hours required. Each operation is treated as its own batch (rates are <em>not</em> capped by a bottleneck); accounting for bottlenecks remains the estimator's judgment when entering cycle times. These helpers are informational and never alter cost calculations.</p>
 
 <h4>3.6.2 Subcontracts</h4>
 <table><tr><th>Field</th><th>Description</th></tr>
@@ -267,6 +291,23 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </ul>
 <p>Cells where material costs are incomplete (one or more BOM items have no cost on file) are flagged in red with a ⚠ indicator. Totals at the bottom of the table show total order quantity and total annual units per break.</p>
 
+<h3>3.8 Manufacturing Summary</h3>
+<p>A read-only operations-focused view (same matrix style as Cost Summary) reporting the metrics the manufacturing team cares about, per volume break:</p>
+<ul>
+  <li><strong>Takt &amp; cycle</strong> — takt time vs. slowest operation cycle, with a green ✓ / red ⚠ indicator when the slowest cycle is within / exceeds takt</li>
+  <li><strong>Equipment utilization</strong> — utilization % and occupied hours per equipment item; over-100% values flagged in red</li>
+  <li><strong>Direct labor hours</strong> — per finished good: run, setup, and total hours per build, hours per year, and DL setup %</li>
+  <li><strong>Indirect labor hours</strong> — factory-wide run / line-setup / order-setup / total hours per year</li>
+</ul>
+
+<h3>3.9 Revision Compare</h3>
+<p>A <strong>Compare</strong> button in the header (available while a quote is open) opens a modal that diffs two snapshots — any two saved revisions, or a saved revision against the current working draft. It surfaces two things:</p>
+<ul>
+  <li><strong>Cost changes</strong> — per FG per break, the $/unit before and after with a signed delta, plus the total annual cost change.</li>
+  <li><strong>Detailed changes</strong> — field-by-field differences across quote info, labor rates, breaks, finished goods, BOM, equipment, and operations. Items are matched by identity: a renamed item shows as a changed field, while an added or removed item is listed by name only (no parameter spam).</li>
+</ul>
+<p>The view is read-only — it never modifies the open quote.</p>
+
 <h2 id="s4">4. Data Model</h2>
 
 <h3>4.1 Quote State (JSON)</h3>
@@ -276,6 +317,9 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   // notes = HTML string, may contain base64-encoded images
 
   settings: { shopRate, indirectRate, capexYears, workingHoursPerYear },
+  // shopRate / indirectRate are hidden internal fallbacks used only when an op has no rateId
+
+  laborRates: [{ id, name, rate }],   // named $/hr rate categories (managed on Quote Info)
 
   breaks: [{ id, label, buildsPerYear, totalEAU }],
   // totalEAU: optional target for the sum of all FG EAUs at this break
@@ -289,6 +333,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
     id, partNumber, description, uom,
     fgSpecific: boolean,            // false = common, true = FG-specific
     customerSupplied: boolean,
+    standard: boolean,              // flat price at any volume (stored as a materialCosts entry with annualQty = 0)
     qty: number,                    // used when fgSpecific = false
     fgQtys: { [fgId]: number }      // used when fgSpecific = true
   }],
@@ -313,18 +358,23 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
     operators: number,              // may be fractional (e.g. 0.5 for a shared operator)
     cycleTimeSec, orderSetupMin, lineSetupMin,
     equipmentIds: [equipmentId, ...],
-    notes
+    notes,
+    rateId                          // references laborRates[].id; falls back to settings.shopRate
   }],
 
   indirectOps: [{
-    id, name, annualHours, orderSetupHrs, lineSetupHrs, notes
+    id, name, annualHours, orderSetupHrs, lineSetupHrs, notes,
+    rateId                          // references laborRates[].id; falls back to settings.indirectRate
   }],
 
   subcontracts: [{
     id, name, priceEach, pricePerLine, pricePerOrder, pricePerYear, notes
   }],
 
-  margins: { [fgId + "|" + breakIndex]: number }   // gross margin %
+  margins: { [fgId + "|" + breakIndex]: number },  // gross margin %
+
+  primaryFgId,                      // selected "primary" finished good id (or "" when unset)
+  primaryBreakId                    // selected "primary" volume break id (or "" when unset)
 }</pre>
 
 <h3>4.2 Parts &amp; Equipment Library (Supabase)</h3>
@@ -342,8 +392,13 @@ part_prices (part_id, min_qty) — tiered pricing
 equipment_library (org_id, name unique per org)
   id, org_id, name, capex, hourly_run_cost, annual_maintenance,
   source_quote_id,   // last quote that wrote this entry
-  locked             // true when used in &gt;1 quote — auto-sync skips locked entries</pre>
+  locked             // true when used in &gt;1 quote — auto-sync skips locked entries
+
+labor_rate_library (org_id, name unique per org)
+  id, org_id, name, rate, source_quote_id, locked
+  // same lock/source pattern; auto-synced from each quote's laborRates</pre>
 <p><strong>Auto-sync rules:</strong> On every debounced cloud save, non-customer-supplied BOM items with a part number are upserted into <code>parts</code> and all entered cost entries are upserted into <code>part_prices</code>. All named equipment entries are upserted into <code>equipment_library</code>. If an entry was originally created by a different quote (different <code>source_quote_id</code>), it is marked <code>locked = true</code> and further auto-sync from either quote is disabled for that entry. A locked entry can still be updated explicitly via the "→ Update Library" button in Quote Review.</p>
+<p><strong>Content search:</strong> the "Search within quotes" feature is backed by a Postgres function <code>search_quotes(p_term)</code> (with an immutable <code>quote_search_text(state jsonb)</code> helper and a GIN <code>tsvector</code> index, <code>quotes_search_idx</code>) defined in <code>schema.sql</code>. It matches part numbers, equipment names, labor rate names, and notes using exact-token <code>tsvector</code> matching, and runs as SECURITY INVOKER so row-level security scopes results to quotes the user may see.</p>
 
 <h2 id="s5">5. Calculation Rules</h2>
 
@@ -450,9 +505,29 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 </div>
 <p>Takt uses the highest-demand break as the binding constraint. If any direct labor operation has a cycle time exceeding takt, it is listed by name in the warning banner on the Operations tab.</p>
 
+<h3>5.9 Cost Drivers (annual $)</h3>
+<div class="formula">
+For a single break j (the primary break, or the highest-volume break if unset):
+  CategoryAnnual = Σ_FG  ( CategoryCostPerUnit(FG, j) × EAU[FG][j] )
+  // categories: Material, Direct Labor, Equipment (split from DL), Indirect Labor, Subcontract
+Individual drivers use the same per-unit terms broken out per BOM line / op / equipment / subcontract.
+Category totals = Σ of their individual drivers (so they reconcile exactly with the Summary tab).
+</div>
+
+<h3>5.10 Primary Throughput (Operations pc/hr helper)</h3>
+<div class="formula">
+qty                 = QtyPerBuild(primaryFG, primaryBreak)
+PersonHours(Op)     = (CycleTimeSec ÷ 3600 × qty)            [run]
+                    + ((LineSetupMin + OrderSetupMin) ÷ 60)   [setup, once per build]
+                      × Operators                              [all operators counted]
+pc/hr(Op)           = qty ÷ PersonHours(Op)
+LinePcHr            = qty ÷ Σ_op PersonHours(Op)               [each op as its own batch, no bottleneck cap]
+</div>
+<p>The pc/hr helper is a labor-inclusive rate: dividing an order quantity by it gives the total person-hours required. It is purely informational and does not feed cost calculations.</p>
+
 <h2 id="s6">6. UX Behavior</h2>
 <ul>
-  <li>7 tabs: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary</li>
+  <li>8 tabs: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary, Mfg Summary</li>
   <li>Operations tab contains three sections: Direct Labor → Subcontracts → Indirect Labor</li>
   <li>All sortable tables support drag-to-reorder with a blue line indicator showing the drop target; dragging to the first or last position is supported</li>
   <li>Add buttons add exactly one row per click</li>
@@ -466,6 +541,10 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
   <li>Takt notice and all cost calculations update live as values are changed anywhere in the app</li>
   <li>Material cost source field per cell; push button copies source to all breaks for that material</li>
   <li>Summary margin inputs are per-FG per-break; entered values persist across sessions</li>
+  <li>The My Quotes list has two search controls: an instant client-side name/customer/number filter and a server-side "Search within quotes" content search (part numbers, equipment, labor rates, notes)</li>
+  <li>The My Quotes list shows an Est. $/unit column (cost at the primary FG + break), lazy-loaded per row and refreshed on return after an edit</li>
+  <li>Operations tab shows grey pc/hr labor-rate helpers per direct op and a line total when a primary FG + break is selected</li>
+  <li>The Cost Drivers panel (Quote Info) and the Revision Compare modal (Compare button) present copy-paste-friendly read-only tables; no charting library is bundled</li>
 </ul>
 
 <h2 id="s7">7. Field Tooltip Reference</h2>
@@ -527,6 +606,13 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <tr><td>Org / site / department hierarchy</td><td>✅ Live</td><td>Organizations contain sites; sites contain departments; quotes belong to departments; admin drawer to manage the full hierarchy</td></tr>
 <tr><td>Role-based access</td><td>✅ Live</td><td>Admin, Estimator, Viewer roles; admins can invite users via 7-day token links</td></tr>
 <tr><td>Parts &amp; equipment library</td><td>✅ Live</td><td>Org-wide library of parts (with tiered pricing by annual qty) and equipment. Auto-populated from saved quotes. Quote Review on the Quote Info tab surfaces price discrepancies with one-click "← Use Library" and "← Update All" actions.</td></tr>
+<tr><td>Manufacturing Summary tab</td><td>✅ Live</td><td>Operations-focused view: takt vs. cycle, equipment utilization, DL/IL hours per FG per break (§3.8)</td></tr>
+<tr><td>Cost Drivers analysis</td><td>✅ Live</td><td>Annual-$ cost breakdown (category + individual drill-down) on the Quote Info tab, scoped to the primary FG + break (§3.1)</td></tr>
+<tr><td>Primary FG + break</td><td>✅ Live</td><td>Per-quote representative scenario driving the Est. $/unit column, Operations pc/hr helpers, and Cost Drivers scope (§2.7)</td></tr>
+<tr><td>Standard (flat-price) materials</td><td>✅ Live</td><td>Per-BOM-item flag for stock parts whose unit cost is constant across volume (§3.4)</td></tr>
+<tr><td>Advanced quote search</td><td>✅ Live</td><td>Server-side content search over part numbers, equipment, labor rates, and notes across all accessible quotes (§1.3)</td></tr>
+<tr><td>Revision compare</td><td>✅ Live</td><td>Modal diff of two revisions / working draft: field-by-field changes and per-FG/break cost deltas (§3.9)</td></tr>
+<tr><td>MCP server integration</td><td>🔜 Planned</td><td>Expose quotes and cost math to the user's AI agent of choice; pending an auth-model decision</td></tr>
 <tr><td>Cross-user quote sharing</td><td>🔜 Phase 5</td><td>Estimators see all quotes in their department (not just their own); org-wide quote visibility for admins</td></tr>
 <tr><td>Org switcher</td><td>🔜 Phase 5</td><td>Users who belong to multiple orgs can switch between them</td></tr>
 <tr><td>Stripe subscriptions</td><td>Planned</td><td>Free tier + paid plans; billing portal; seat-based pricing</td></tr>
@@ -539,7 +625,7 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <tr><td>Global margin default</td><td>Set a default margin % that pre-fills all sell price cells; overridable per cell</td></tr>
 <tr><td>Scrap / yield factor</td><td>Per-BOM-item yield: effective qty = nominal qty ÷ yield %</td></tr>
 <tr><td>FG-specific operations</td><td>Flag direct ops as applicable to a subset of FGs (not all FGs)</td></tr>
-<tr><td>Equipment utilization display</td><td>Show calculated utilization % per equipment per break on the Equipment tab</td></tr>
+<tr><td>Equipment utilization display</td><td>✅ Shipped — utilization % and occupied hours per equipment per break are shown on the Manufacturing Summary tab (§3.8)</td></tr>
 <tr><td>Tooling amortization</td><td>Separate tooling cost line with a custom amortization quantity independent of annual volume</td></tr>
 <tr><td>Overhead as % of direct cost</td><td>Alternative indirect model: overhead % applied to direct labor rather than $/hr × hrs</td></tr>
 <tr><td>Alternate materials</td><td>Multiple candidate parts per BOM line; estimator selects the active one</td></tr>
@@ -551,11 +637,11 @@ TaktSec = WorkingHoursPerYear × 3,600 ÷ max(TotalAnnualUnits[j] across all j)
 <tr><th>Enhancement</th><th>Notes</th></tr>
 <tr><td>Print / PDF stylesheet</td><td>Clean print layout for Summary and BOM cost sheets</td></tr>
 <tr><td>Cost history chart</td><td>Visual cost-vs-volume curve per FG across break columns</td></tr>
-<tr><td>Quote comparison</td><td>Side-by-side view of two saved quotes or revisions</td></tr>
+<tr><td>Quote comparison</td><td>✅ Shipped as Revision Compare (§3.9) for revisions of the same quote; side-by-side comparison of two <em>different</em> quotes is still future</td></tr>
 <tr><td>Customer-facing summary export</td><td>Stripped-down PDF showing sell prices only, no internal cost detail</td></tr>
 </table>
 
 <hr style="margin-top:48px;border:none;border-top:1px solid #ddd">
-<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.6 — May 2026 — Emuri, LLC</p>
+<p style="font-size:12px;color:#888;font-family:sans-serif;text-align:center">Emura Manufacturing Cost Estimator — Specification v0.7 — May 2026 — Emuri, LLC</p>
 </body>
 </html>

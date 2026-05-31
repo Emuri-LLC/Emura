@@ -9,6 +9,8 @@ Run before every production deploy. Copy this file, fill in the Pass/Fail column
 
 Accounts needed: one **admin**, one **estimator**, one **viewer** (create via invite), plus a spare email for invite tests.
 
+> **Migration prerequisite (advanced search):** the `quote_search_text()` / `search_quotes()` functions and `quotes_search_idx` index from `emura-app/supabase/schema.sql` must be run in the Supabase SQL Editor for the target environment before section 3.12–3.14 will pass.
+
 ---
 
 ## 1. Auth
@@ -50,6 +52,11 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 3.7 | Click **Open** on a quote | Tab editor opens with that quote's data | |
 | 3.8 | Click **Delete** on a quote | Confirmation dialog appears; confirm → quote removed from list | |
 | 3.9 | Delete the currently-open quote | Returns to quotes list | |
+| 3.10 | On a quote with a **primary FG + break** set, view the list | **Est. $/unit** column shows the cost/unit at that combo (monospace `$x.xx`); quotes with no primary show `—` | |
+| 3.11 | Open a quote, change a material cost, return to the list | The status dot **and** Est. $/unit refresh to the new value (not stale) | |
+| 3.12 | Type a part number used in a quote into **Search within quotes**, click Search | List shows matching quotes; content-only matches badged "in contents"; name/customer matches listed first | |
+| 3.13 | Click **Clear** on the content search | List returns to the full quote list; the quick name/customer filter still works independently | |
+| 3.14 | Content-search a term that matches nothing | "No quotes match …" empty state; no crash | |
 
 ---
 
@@ -84,6 +91,8 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 5.3 | Enter EAU per break | Values persist on tab switch and reload | |
 | 5.4 | Add a second FG; drag the first row below the second | Order changes and persists on reload | |
 | 5.5 | Delete a FG | Row removed; FG-specific BOM items for that FG are no longer shown | |
+| 5.6 | Set the **Primary FG** and **Primary Break** dropdowns | Selections persist on reload; Est. $/unit appears in the quotes list and pc/hr helpers appear on Operations | |
+| 5.7 | Delete the FG currently set as primary | No crash; primary selection resolves to "unset" (Est. $/unit blanks, pc/hr helpers hide) | |
 
 ---
 
@@ -100,6 +109,7 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 6.7 | Type a part number that matches a library part | Dropdown shows "From library" section with matching parts | |
 | 6.8 | Select a library part | Part number, description, and UOM pre-filled from library data | |
 | 6.9 | Type a part number that matches an existing BOM item | "From this quote" section shows the match | |
+| 6.10 | Check the **Std** box on a non-customer-supplied item | Item is flagged standard; Material Costs tab shows a single flat-price input for it (see 7.5) | |
 
 ---
 
@@ -111,6 +121,8 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 7.2 | Enter a unit cost per break | Cost saves on blur | |
 | 7.3 | Enter a Source value | Source text saves on blur | |
 | 7.4 | Switch to Summary tab | Material cost line reflects entered costs × qty | |
+| 7.5 | For a **Std**-flagged item, enter one flat price | A single flat-price input shown (no per-break cells); the same $/unit is used at every break in Summary | |
+| 7.6 | Save the quote with a standard item priced, check `part_prices` in Supabase | A `min_qty = 0` tier row exists for that part | |
 
 ---
 
@@ -140,6 +152,8 @@ Accounts needed: one **admin**, one **estimator**, one **viewer** (create via in
 | 9.7 | Add a **Subcontract** with price-each and price-per-order | Appears in Subcontracts section | |
 | 9.8 | Delete one of each type | Rows removed; Summary updates | |
 | 9.9 | Warning shown when no labor rates defined | "No labor rates defined" banner appears in Direct Labor and Indirect sections | |
+| 9.10 | With a primary FG + break set, view Direct Labor | Each op shows a grey **pc/hr** helper under its name; a line-rate banner shows the combined pc/hr and person-hrs/build | |
+| 9.11 | No primary FG + break set | No pc/hr helpers or banner shown (informational only; costs unaffected) | |
 
 ---
 
@@ -243,7 +257,8 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 | 16.3 | Slowest cycle exceeds takt time | Value shown in red with ⚠ indicator | |
 | 16.4 | Slowest cycle is within takt | Value shown in green with ✓ indicator | |
 | 16.5 | Quote with no operations | Sections show "No direct/indirect operations defined" | |
-| 16.6 | DL setup % — verify with a quote where all time is setup | Shows 100% setup | |
+| 16.6 | DL setup % — verify with a quote where all time is setup | Direct Labor section shows 100% setup | |
+| 16.7 | Indirect Labor section | **No "Setup %" row** is present (removed); DL section keeps its own setup % | |
 
 ---
 
@@ -256,12 +271,12 @@ Use separate browser sessions or incognito windows for each role. Generate estim
 | 17.3 | Open a quote on mobile viewport (375 px wide) | Tabs scroll horizontally; no horizontal overflow on content | |
 | 17.4 | Leave the app idle for 15+ minutes, then make an edit | Edit saves successfully (session still valid) | |
 | 17.5 | Open the same quote in two browser tabs, edit in one | Other tab shows stale data (expected); no data corruption | |
-| 16.6 | Create a quote with 10 FGs, 20 BOM items, 5 ops | No performance degradation; Summary calculates without visible lag | |
-| 16.7 | Check browser console after a normal session | No unhandled errors or warnings in console | |
+| 17.6 | Create a quote with 10 FGs, 20 BOM items, 5 ops | No performance degradation; Summary calculates without visible lag | |
+| 17.7 | Check browser console after a normal session | No unhandled errors or warnings in console | |
 
 ---
 
-## 17. Parts & Equipment Library
+## 18. Parts & Equipment Library
 
 Requires at least one saved quote with BOM items, material costs entered on the Material Costs tab, and equipment defined.
 
@@ -272,7 +287,32 @@ Requires at least one saved quote with BOM items, material costs entered on the 
 | 17.3 | Define equipment on the Equipment tab, save the quote | Equipment row appears in `equipment_library` | |
 | 17.4 | Open a second quote with the same part number at a different cost | Quote Review shows a finding for that part | |
 | 17.5 | Open browser DevTools console after saving a quote | No `[library]` error messages | |
-| 17.6 | Save a quote with a customer-supplied BOM item | That item does **not** appear in `parts` table | |
+| 18.6 | Save a quote with a customer-supplied BOM item | That item does **not** appear in `parts` table | |
+
+---
+
+## 19. Cost Drivers (Quote Info tab)
+
+| # | Action | Expected | Pass/Fail |
+|---|--------|----------|-----------|
+| 19.1 | Open Quote Info on a quote with FGs, EAU, and costs | "Top Cost Drivers" panel shown below Quote Review | |
+| 19.2 | Review the category table | Categories (Material / Direct Labor / Equipment / Indirect Labor / Subcontract) sorted highest → lowest annual $; % and bars shown; Total reconciles with Summary | |
+| 19.3 | Review the individual drivers table | Sorted highest → lowest; capped at 7 rows with a **Show all** button | |
+| 19.4 | Click **Show all**, then **Show top 7** | Toggles between full list and top 7 | |
+| 19.5 | With a primary break set vs unset | Uses the primary break when set; falls back to the highest-volume break when unset (header notes which break) | |
+| 19.6 | Empty quote (no costs/EAU) | "Add finished goods with EAU and entered costs…" empty state; no crash | |
+
+---
+
+## 20. Revision Compare
+
+| # | Action | Expected | Pass/Fail |
+|---|--------|----------|-----------|
+| 20.1 | Save at least one revision, then click **Compare** in the header | Modal opens with From / To dropdowns (Working Draft + each Rev) | |
+| 20.2 | Compare a saved revision to the Working Draft after editing | Cost-change table shows per-FG/break $/unit deltas; detailed field-by-field changes listed | |
+| 20.3 | Add/remove an op or BOM item between revisions | Added/removed items listed by name only (no full parameter dump) | |
+| 20.4 | Select the same revision for From and To | "Select two different revisions" message; no crash | |
+| 20.5 | Close the modal | Returns to the quote unchanged (compare is read-only) | |
 
 ---
 
@@ -282,21 +322,24 @@ Requires at least one saved quote with BOM items, material costs entered on the 
 |------|------|------|-------|
 | Auth (8 tests) | | | |
 | Org Bootstrap (4) | | | |
-| Quotes List (9) | | | |
-| Quote Info (12) | | | |
-| Finished Goods (5) | | | |
-| BOM (6) | | | |
-| Material Costs (4) | | | |
-| Equipment (4) | | | |
-| Operations (5) | | | |
+| Quotes List (14) | | | |
+| Quote Info (15) | | | |
+| Finished Goods (7) | | | |
+| BOM (10) | | | |
+| Material Costs (6) | | | |
+| Equipment (6) | | | |
+| Operations (11) | | | |
 | Summary (5) | | | |
 | Role Gating (8) | | | |
-| Undo (6) | | | |
+| Undo (10) | | | |
 | Import / Export (7) | | | |
 | Invite Flow (9) | | | |
 | Admin Drawer (8) | | | |
+| Mfg Summary (7) | | | |
 | Edge Cases (7) | | | |
 | Parts & Equipment Library (6) | | | |
+| Cost Drivers (6) | | | |
+| Revision Compare (5) | | | |
 | **Total** | | | |
 
 **Deploy approved:** ☐ Yes  ☐ No — blocked on: ___________________________

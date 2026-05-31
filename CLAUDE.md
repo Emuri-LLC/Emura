@@ -73,6 +73,12 @@ per volume break.
 - Parts & equipment library: auto-synced on every cloud save; locked entries (shared across multiple quotes) can only be updated via manual "→ Update Library" push
 - Quote Review panel (bottom of Quote Info tab): compares active quote against library; red = library ≥ quote (possible underestimate), green = library < quote (cost reduction available)
 - `getMyOrgContext` uses `order('created_at', desc).limit(1).maybeSingle()` to handle users with duplicate org_members rows (trigger self-org + invite-accepted org)
+- **Primary FG + Break**: each quote can select a "primary" finished good + volume break (picker on the Finished Goods tab; `primaryFgId`/`primaryBreakId`). Drives the quote-list **Est. $/unit** column, the Operations **pc/hr** helpers, and the default scope of the Cost Drivers panel.
+- **Cost Drivers** panel (bottom of Quote Info tab, below Quote Review): annual-$ cost breakdown aggregated across all FGs at the primary break — category table + individual drill-down (top 7 with a "Show all" toggle), copy-paste-friendly tables, CSS-div bars (no chart dependency)
+- **Standard materials**: a BOM item flagged `standard` has one flat price that applies at any volume (Std checkbox on BOM tab; single flat-price input on Material Costs tab)
+- **Advanced search**: the quotes list has a separate "Search within quotes" box that runs a server-side `search_quotes` RPC over quote content (part numbers, equipment names, labor rate names, notes); name/customer matches rank above content-only matches (badged "in contents"). The original name/customer filter box is retained.
+- **Revision Compare**: a "Compare" button in the header (open quote) launches a modal diffing any two saved revisions or the working draft — field-by-field changes plus per-FG/break cost deltas
+- Mfg Summary tab: the indirect-labor section no longer shows a "Setup %" row (removed; DL section keeps its own)
 
 ## Key file locations
 
@@ -88,8 +94,9 @@ per volume break.
 - `emura-app/app/join/page.tsx` — invite token acceptance; calls `accept_org_invite` RPC
 
 ### Cloud save & org
-- `emura-app/lib/db.ts` — all Supabase query functions: `getMyOrgContext`, `listQuotes`, `loadQuote`, `createQuote`, `saveQuote`, `deleteQuote`, org/site/dept/member management, `createInvite`
-- `emura-app/supabase/schema.sql` — full schema: tables, RLS policies, `handle_new_user` trigger, `accept_org_invite` RPC
+- `emura-app/lib/db.ts` — all Supabase query functions: `getMyOrgContext`, `listQuotes`, `loadQuote`, `createQuote`, `saveQuote`, `deleteQuote`, `saveRevision`, `loadQuoteRevision`, `searchQuotes` (content search RPC), library sync/list helpers, org/site/dept/member management, `createInvite`
+- `emura-app/supabase/schema.sql` — full schema: tables, RLS policies, `handle_new_user` trigger, `accept_org_invite` RPC, `quote_search_text`/`search_quotes` content-search functions + `quotes_search_idx` GIN index
+- `emura-app/lib/quoteStatus.ts` — `computeStatusEntry()` builds the quotes-list status dot AND the primary `primaryTotal` ($/unit); `QUOTE_STATUS_ENABLED` kill switch
 
 ### Components
 - `emura-app/components/QuotesList.tsx` — quote picker; entry point before a quote is open
@@ -98,6 +105,8 @@ per volume break.
   - Email resolution uses `get_org_member_emails(p_org_id)` security-definer RPC — NOT a direct `org_invites` query.
   - `currentUserId` prop must come from `userId` state in `page.tsx` (the actual `auth.users` UUID). **Bug in earlier code**: was incorrectly passing `orgCtx.orgId` (the org UUID) instead, so the current user's row was never detected as self and was not read-only. Correct: `currentUserId={userId}`.
 - `emura-app/components/QuoteReview.tsx` — library vs quote comparison panel at bottom of Quote Info tab
+- `emura-app/components/CostDrivers.tsx` — top-cost-drivers panel on Quote Info (pure `computeCostDrivers`); category + drill-down tables, top 7 + "Show all"
+- `emura-app/components/RevisionCompare.tsx` — modal launched from the header (open quote); diffs two revisions/working draft via pure `computeRevisionDiff`
 
 ### Logic
 - `emura-app/lib/calculations.ts` — all cost math as pure functions; defines all TypeScript interfaces
@@ -109,14 +118,14 @@ per volume break.
 - `emura-app/components/LaborRateSelector.tsx` — single-select rate picker; same two-section structure as EquipmentSelector
 
 ### Tabs (emura-app/components/tabs/)
-- `QuoteInfoTab.tsx` — quote name, customer, notes (supports images); Labor Rates card replaces shopRate/indirectRate inputs; "Revision Note" field (cleared after first edit post-rev-save)
-- `FinishedGoodsTab.tsx` — FG list with EAU, mix, description
-- `BOMTab.tsx` — common + FG-specific BOM items with drag sort; part number field shows "from this quote" / "from library" autocomplete
-- `MaterialCostsTab.tsx` — cost entries per part/break with source field
+- `QuoteInfoTab.tsx` — quote name, customer, notes (supports images); Labor Rates card replaces shopRate/indirectRate inputs; "Revision Note" field (cleared after first edit post-rev-save); renders `QuoteReview` then `CostDrivers` below the cards
+- `FinishedGoodsTab.tsx` — FG list with EAU, mix, description; **Primary FG + Break** picker (two selects writing `primaryFgId`/`primaryBreakId`)
+- `BOMTab.tsx` — common + FG-specific BOM items with drag sort; part number field shows "from this quote" / "from library" autocomplete; **Std** checkbox flags a standard (flat-price) material
+- `MaterialCostsTab.tsx` — cost entries per part/break with source field; standard items render a single flat-price input (writes an annualQty=0 entry) instead of per-break cells
 - `EquipmentTab.tsx` — CapEx equipment entries; "From library" chips for copy-on-use
-- `OperationsTab.tsx` — direct ops, indirect ops, subcontract on one tab; Rate column (LaborRateSelector) for each op
+- `OperationsTab.tsx` — direct ops, indirect ops, subcontract on one tab; Rate column (LaborRateSelector) for each op; grey **pc/hr** helper per direct op + a line-rate banner when a primary FG+break is set
 - `SummaryTab.tsx` — cost breakdown table + margin/sell price per FG per break
-- `MfgSummaryTab.tsx` — manufacturing summary: takt/cycle, equipment utilization, DL hours per FG/break, IL hours factory-wide
+- `MfgSummaryTab.tsx` — manufacturing summary: takt/cycle, equipment utilization, DL hours per FG/break, IL hours factory-wide (indirect "Setup %" row removed)
 
 ### Hooks
 - `emura-app/hooks/useDragSort.ts` — HTML5 DnD reorderable rows; returns dragProps() and rowClass()
@@ -124,11 +133,13 @@ per volume break.
 ## Core TypeScript interfaces (in calculations.ts)
 ```
 AppState     { quote, settings, laborRates, breaks, finishedGoods, bom, materialCosts,
-               materialSources, equipment, directOps, indirectOps, subcontracts, margins }
+               materialSources, equipment, directOps, indirectOps, subcontracts, margins,
+               primaryFgId?, primaryBreakId? }   // primary* = selected "primary" FG/break ids for summary stats
 Break        { id, label, buildsPerYear, totalEAU }
 FGBreak      { eau? }
 FinishedGood { id, name, description, breaks: FGBreak[] }   // breaks index-aligned to state.breaks
-BOMItem      { id, partNumber, description, uom, fgSpecific, customerSupplied, qty, fgQtys }
+BOMItem      { id, partNumber, description, uom, fgSpecific, customerSupplied, standard?, qty, fgQtys }
+             // standard? = flat price at any volume (stored as a materialCosts entry with annualQty=0)
 Equipment    { id, name, capex, hourlyRunCost, annualMaintenance, projectSpecific }
 LaborRate    { id, name, rate }                              // named $/hr rate category
 DirectOp     { id, name, operators, cycleTimeSec, orderSetupMin, lineSetupMin, equipmentIds[], notes, rateId? }
@@ -295,6 +306,51 @@ Navigation between tabs does NOT affect undo/redo — same behavior as undo.
 ### Sell price
 `totalCost / (1 - margin/100)` — gross margin basis
 
+### Standard (flat-price) materials
+A BOM item with `standard === true` has one flat price applied at any volume. The price is stored
+as a `materialCosts` entry with `annualQty === 0`. `findCost()` checks for a `0` entry first and
+returns it as a wildcard for any `tq` (unflagged), short-circuiting the normal proximity/tier
+window. The Std checkbox lives on the BOM tab; the Material Costs tab renders a single flat-price
+input for standard items. Library sync filters were widened from `annualQty > 0` to `>= 0`
+(`syncPartsToLibrary`, `pushPartToLibrary`, `handlePushToLibrary`) so the flat tier syncs as a
+`part_prices` row with `min_qty = 0` (which `applicablePrice` already treats as "applies to all").
+
+### Primary FG + break throughput (Operations pc/hr helpers)
+`resolvePrimaryIndices(state)` → `{ fgi, bki }` (−1 when unset/missing). `computePrimaryThroughput`
+expresses an effective **labor rate**: `pcPerHour = qty ÷ totalPersonHours`, where `qty` is the
+primary FG's units/build and person-hours = run + setup for **all** operators (per owner spec:
+total labor content, each op treated as its own batch, NOT bottleneck-limited; setup included).
+`linePcPerHour = qty ÷ Σ person-hours`. Dividing an order qty by pc/hr yields total person-hours.
+
+### Cost Drivers (computeCostDrivers)
+Pure function in `calculations.ts`. Returns annual-$ drivers aggregated across all FGs at one break
+(the primary break; falls back to the highest-volume break when unset). Categories are
+Material / Direct Labor / Equipment (split out of DL) / Indirect Labor / Subcontract, derived by
+summing their individual drivers so category totals always equal the sum of listed drivers; both
+`categories` and `drivers` are sorted descending. The per-category/per-op/per-item math mirrors
+`calcCosts` exactly so totals reconcile with the Summary tab.
+
+### Advanced (content) search — REQUIRES a DB migration
+`searchQuotes(supabase, term)` calls the `search_quotes(p_term)` RPC. The RPC + `quote_search_text()`
+helper + `quotes_search_idx` GIN index are in `schema.sql` and **must be run in the Supabase SQL
+Editor** before search works in production. The RPC is SECURITY INVOKER so the `quotes` RLS policy
+scopes results. Matching is `to_tsvector('simple', …) @@ plainto_tsquery('simple', term)` — exact
+token, not substring. The original name/customer quick filter is a separate client-side filter and
+was retained. In `QuotesList`, content results render two-tier: name/customer matches first, then
+content-only matches (badged "in contents").
+
+### Revision Compare (computeRevisionDiff)
+Pure function diffing two `AppState` snapshots. Entities matched by `id` (rename → "changed Name"
+field; true add/remove → listed by name only, no param spam). Plus per-FG/break cost deltas via
+`calcCosts`. Snapshots come from the existing `quote_revisions` table (`loadQuoteRevision`); the
+working draft is the in-memory `appState`. Launched from the header "Compare" button on an open quote.
+
+### Quote-list status cache invalidation
+`statusCache` (in `page.tsx`) backs both the status dot and the **Est. $/unit** column, lazy-loaded
+per visible quote via `handleVisibleIdsChange` (gated by `QUOTE_STATUS_ENABLED`). It went stale after
+an edit because cached ids were never recomputed. Fix: `cloudSave` deletes the edited quote's id from
+`statusCache` on save success, so it reloads when the list is next viewed. No fetch during editing.
+
 ### State migrations
 `migrateState()` in state.ts handles schema evolution. Current store key: `mce_v4`.
 Migrations handle: old `type` field → `fgSpecific` boolean; old per-op `capex` → equipment entry.
@@ -378,6 +434,12 @@ When generating `index.mjs`, use the **exact UI selectors** from the source. The
 | Quote Review card | `.card-hdr` containing text `'Quote Review'` |
 | Update All button | `button` with text `'← Update All from Library'` (in Quote Review card header) |
 | Per-row Update button | `button` with text `'← Use Library'` (one per finding row) |
+| Cost Drivers card | `.card-hdr` containing text `'Top Cost Drivers'`; "Show all" toggle is `button` with text starting `'Show all'` |
+| Primary FG / Break | two `select`s on the Finished Goods tab (labels "SKU" / "Break") |
+| Std checkbox (BOM) | checkbox in the "Std" column header (`title` "Standard material…") |
+| Compare revisions | `button` with text `'Compare'` (header, only when a quote is open) — modal is a fixed overlay with two `select`s (From/To) |
+| Content search | `input[placeholder="Search within quotes…"]` + `button` with text `'Search'`; `'Clear'` button appears when active |
+| Est. $/unit column | header `th` text `'Est. $/unit'` in QuotesList; value is monospace `$x.xx` or `—` |
 | Save status | `#save-status` |
 | Quote Info inputs | `div.fgrp input[type="text"]` — no placeholder or id; first is Name, second Customer, fourth Revision |
 | Notes area | `div.notes-editable` (contenteditable div, not a textarea) |
@@ -471,6 +533,8 @@ Current fields and their guards:
 - `directOps[*].rateId` — `if (op.rateId === undefined) op.rateId = ''`
 - `indirectOps[*].rateId` — same
 - `quote.revision` — `if (!state.quote.revision) state.quote.revision = ''`
+- `bom[*].standard` — `if (item.standard === undefined) item.standard = false`
+- `primaryFgId` / `primaryBreakId` — `if (state.primaryFgId === undefined) state.primaryFgId = ''` (same for break)
 
 If you add a new field to `AppState`, add its guard to this list.
 
@@ -523,57 +587,3 @@ allowing an explicit forced push from the quote back to the shared library.
   (originally admin-only — was changed after RLS failure; make sure policy reflects `role in ('admin','estimator')`)
 - `part_prices` requires `unique (part_id, min_qty)` — must be added manually if table was created before the constraint was in the schema
 - `equipment_library` requires `unique (org_id, name)` — same
-
----
-
-## Wrike Task Tracking
-
-### Before starting work
-
-Search Wrike for an applicable task using `mcp__wrike__wrike_search_tasks` (or the `mcp__claude_ai_Wrike__wrike_search_tasks` variant). Look in the Emura project/space. If a matching task exists, link to it before touching any code.
-
-Never show raw Wrike string IDs (e.g. `MAAAAAEKEaHj`) or numeric IDs to the user. Use task names and permalink URLs (`https://www.wrike.com/open.htm?id=<numericId>`).
-
-### Write the state file immediately
-
-When you identify the Wrike task you are about to implement, immediately write the state file **before making any code changes or commits**:
-
-```bash
-python3 -c "import json; open('/Users/eohano/Emuri/Emura/.claude/current-wrike-task.json','w').write(json.dumps({'taskId':'<ID>','numericId':<numericId>,'title':'<title>'}))"
-```
-
-Replace `<ID>` with the string task ID from `wrike_get_tasks` (e.g. `"MAAAAAEKEaHj"`), `<numericId>` with the integer ID, and `<title>` with the task title.
-
-Overwrite the file when switching to a new task. If the file is absent or `taskId` is empty, the hook exits silently (no Wrike updates occur).
-
-### Git hook (automatic)
-
-A PostToolUse hook at `.claude/hooks/wrike-git-hook.py` fires on every `git commit` and `git push` and automatically:
-- Posts a comment to the Wrike task via the REST API (with commit hash/message or push ref)
-- Updates the task due date to today
-- On `git push`: changes task status to **Review** (status ID `IEAG2PPMJMHLYVAE`)
-
-The hook reads the Bearer token from `.mcp.json` (`mcpServers.wrike.args`). It always exits 0 so it never blocks Claude's workflow.
-
-### Completing a task (manual)
-
-When work is done and pushed, the git hook sets status to Review automatically. If you need to update status manually, use `wrike_update_task` with the string task ID and the appropriate custom status ID:
-
-| Status | Custom Status ID |
-|--------|-----------------|
-| Review | `IEAG2PPMJMHLYVAE` |
-
-To post a comment manually (the hook does this on commit/push, but if needed outside git):
-- Use the Wrike REST API: `POST https://www.wrike.com/api/v4/tasks/<taskId>/comments`
-- Body: `{ "text": "…" }`
-- Auth: `Authorization: Bearer <token>` (from `.mcp.json`)
-
-### Finding tasks
-
-```
-mcp__wrike__wrike_search_tasks   — search by keyword/title
-mcp__wrike__wrike_get_tasks      — get tasks in a specific folder/project
-mcp__wrike__wrike_get_spaces     — list top-level spaces to find the Emura project
-```
-
-If unsure which folder the Emura project is in, call `wrike_get_spaces` first, then `wrike_get_folder_project` to navigate to the right project, then `wrike_get_tasks`.
