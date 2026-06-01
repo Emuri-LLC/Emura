@@ -332,7 +332,12 @@ export default function Home() {
         saveState(imported);
         if (quoteId) cloudSave(quoteId, imported);
         setResetKey(k => k + 1);
-      } catch { /* invalid file */ }
+      } catch {
+        // Non-blocking feedback via the existing save-status channel (no pop-up,
+        // per the no-warnings design principle). Reverts after a few seconds.
+        setSaveStatus('Import failed — invalid file');
+        setTimeout(() => setSaveStatus('Saved'), 3000);
+      }
     };
     reader.readAsText(f);
     e.target.value = '';

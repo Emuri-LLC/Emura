@@ -20,12 +20,16 @@ interface Props {
 export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryParts = [], libraryEquipment = [], onPushToLibrary }: Props) {
   const notesRef = useRef<HTMLDivElement>(null);
 
+  // Re-runs on resetKey change (import / undo / redo / new) so the contenteditable
+  // picks up freshly-loaded notes. Deliberately NOT keyed on state.quote.notes —
+  // that would clobber the cursor on every keystroke (the div is uncontrolled;
+  // edits are committed via onBlur, not re-rendered through this effect).
   useEffect(() => {
     if (notesRef.current) {
       notesRef.current.innerHTML = sanitizeNotes(state.quote.notes ?? '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [resetKey]);
 
   function setQuote(field: keyof AppState['quote'], value: string) {
     onUpdate({ ...state, quote: { ...state.quote, [field]: value } });
