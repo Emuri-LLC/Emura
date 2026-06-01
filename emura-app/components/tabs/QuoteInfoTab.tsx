@@ -56,6 +56,19 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
     reader.readAsDataURL(imgItem.getAsFile()!);
   }
 
+  function handleNotesKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const cmds: Record<string, string> = { b: 'bold', i: 'italic', u: 'underline' };
+    const cmd = cmds[e.key.toLowerCase()];
+    if (!cmd) return;
+    e.preventDefault();
+    // styleWithCSS=false makes execCommand emit tag markup (<b>/<i>/<u>) rather
+    // than styled spans, so the formatting survives sanitizeNotes (which allows
+    // those tags but strips span/style). onBlur commits the result to state.
+    document.execCommand('styleWithCSS', false, 'false');
+    document.execCommand(cmd);
+  }
+
   // ── Labor rate helpers ────────────────────────────────────────
   function setRate(idx: number, patch: Partial<LaborRate>) {
     const next = state.laborRates.map((r, i) => i === idx ? { ...r, ...patch } : r);
@@ -136,6 +149,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
                   setQuote('notes', sanitizeNotes(notesRef.current.innerHTML));
                 }
               }}
+              onKeyDown={handleNotesKeyDown}
               onPaste={handleNotesPaste}
             />
           </div>
