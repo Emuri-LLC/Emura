@@ -1,6 +1,11 @@
 -- =============================================================
--- Emura Phase 4 Schema
--- Run in Supabase SQL Editor (Dashboard → SQL Editor → New query)
+-- Emura Schema (consolidated — Phases 4 & 5)
+-- Single source of truth for a fresh database. Run in the Supabase
+-- SQL Editor (Dashboard → SQL Editor → New query). Tables/policies
+-- use bare CREATE, so this is an initial-setup script — re-running
+-- the whole file against a populated DB will error on existing
+-- objects. Functions use CREATE OR REPLACE and the trailing backfill
+-- is idempotent, so those blocks can be re-applied individually.
 -- =============================================================
 
 -- ── Tables ────────────────────────────────────────────────────
@@ -50,14 +55,27 @@ create table org_invites (
 );
 
 create table quotes (
-  id            uuid primary key default gen_random_uuid(),
-  department_id uuid references departments on delete cascade not null,
-  created_by    uuid references auth.users on delete set null,
-  name          text not null default 'New Quote',
-  customer      text not null default '',
-  state         jsonb not null,
-  created_at    timestamptz default now(),
-  updated_at    timestamptz default now()
+  id              uuid primary key default gen_random_uuid(),
+  department_id   uuid references departments on delete cascade not null,
+  created_by      uuid references auth.users on delete set null,
+  last_updated_by uuid references auth.users on delete set null,
+  quote_number    int,
+  name            text not null default 'New Quote',
+  customer        text not null default '',
+  state           jsonb not null,
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+
+-- quote_revisions: immutable point-in-time snapshots of a quote's state.
+create table quote_revisions (
+  id          uuid primary key default gen_random_uuid(),
+  quote_id    uuid not null references quotes(id) on delete cascade,
+  rev_number  int  not null,
+  state       jsonb not null,
+  created_at  timestamptz default now(),
+  created_by  uuid references auth.users on delete set null,
+  unique(quote_id, rev_number)
 );
 
 -- ── RLS ───────────────────────────────────────────────────────
@@ -68,6 +86,7 @@ alter table departments   enable row level security;
 alter table org_members   enable row level security;
 alter table org_invites   enable row level security;
 alter table quotes        enable row level security;
+alter table quote_revisions enable row level security;
 
 -- organizations: readable/writable by members of that org (admin writes)
 create policy "orgs_select" on organizations for select
@@ -191,6 +210,29 @@ create policy "quotes_delete" on quotes for delete
         and om.role = 'admin'
     )
   );
+
+-- quote_revisions: same visibility as the parent quote.
+create policy "revisions_select" on quote_revisions for select
+  using (exists (
+    select 1 from quotes q
+    join departments d on d.id = q.department_id
+    join sites s on s.id = d.site_id
+    join org_members om on om.org_id = s.org_id
+    where q.id = quote_revisions.quote_id
+      and om.user_id = auth.uid()
+      and (om.role = 'admin' or om.department_id = q.department_id)
+  ));
+
+create policy "revisions_insert" on quote_revisions for insert
+  with check (exists (
+    select 1 from quotes q
+    join departments d on d.id = q.department_id
+    join sites s on s.id = d.site_id
+    join org_members om on om.org_id = s.org_id
+    where q.id = quote_revisions.quote_id
+      and om.user_id = auth.uid()
+      and om.role in ('admin', 'estimator')
+  ));
 
 -- ── Parts & Equipment Library (Phase 5) ──────────────────────
 
@@ -389,6 +431,40 @@ begin
   update org_invites set accepted_at = now() where id = v_invite.id;
 end; $$;
 
+-- Resolve org members' email addresses from auth.users (otherwise inaccessible
+-- to clients). SECURITY DEFINER so it can read auth.users, with row_security off
+-- so the members_select RLS policy (user_id = auth.uid()) does not narrow the
+-- result to the caller's own row. The explicit membership guard supplies the
+-- authorization RLS would otherwise enforce: a caller may only resolve emails
+-- for an org they belong to, preventing cross-tenant email enumeration via a
+-- guessed/iterated p_org_id. Called on every app load by listMembers / page.tsx.
+create or replace function get_org_member_emails(p_org_id uuid)
+returns table (user_id uuid, email text)
+language plpgsql security definer
+set search_path = public
+set row_security = off
+as $$
+begin
+  -- Columns are qualified with the table alias because user_id/email are also
+  -- OUT-variable names from the RETURNS TABLE signature; an unqualified column
+  -- reference would bind to the (null) variable and the guard would never match.
+  if not exists (
+    select 1 from public.org_members m
+    where m.org_id = p_org_id and m.user_id = auth.uid()
+  ) then
+    raise exception 'not a member of this org';
+  end if;
+
+  return query
+    select m.user_id, u.email::text
+    from public.org_members m
+    join auth.users u on u.id = m.user_id
+    where m.org_id = p_org_id;
+end; $$;
+
+revoke all on function get_org_member_emails(uuid) from public, anon;
+grant execute on function get_org_member_emails(uuid) to authenticated;
+
 -- ── Advanced (content) search over quotes ─────────────────────
 -- Extracts searchable text from a quote's state JSONB: estimator notes,
 -- BOM part numbers, equipment names, and labor rate names. Marked immutable
@@ -425,3 +501,91 @@ begin new.updated_at = now(); return new; end; $$;
 create trigger quotes_updated_at
   before update on quotes
   for each row execute function touch_updated_at();
+
+-- ── Auto-assign quote_number on insert ────────────────────────
+-- Sequential per-org quote number, assigned before insert.
+create or replace function assign_quote_number()
+returns trigger language plpgsql security definer
+set search_path = public
+set row_security = off
+as $$
+declare
+  v_org_id uuid;
+  v_num    int;
+begin
+  select s.org_id into v_org_id
+  from public.departments d
+  join public.sites s on s.id = d.site_id
+  where d.id = new.department_id;
+
+  select coalesce(max(q.quote_number), 0) + 1 into v_num
+  from public.quotes q
+  join public.departments d on d.id = q.department_id
+  join public.sites s on s.id = d.site_id
+  where s.org_id = v_org_id;
+
+  new.quote_number = v_num;
+  return new;
+end; $$;
+
+create or replace trigger assign_quote_number_trigger
+  before insert on quotes
+  for each row execute function assign_quote_number();
+
+-- ── Last-admin guard ──────────────────────────────────────────
+-- RLS lets any admin update/delete any org_members row; the AdminDrawer makes
+-- the current user's own row read-only in the UI only. This trigger enforces at
+-- the DB level (so a direct API call can't bypass it) that an org always keeps
+-- at least one admin: it blocks demoting or removing the last remaining admin.
+-- security definer + row_security off so the admin count sees all rows, not
+-- just the caller's own (members_select restricts to user_id = auth.uid()).
+create or replace function prevent_last_admin_change()
+returns trigger language plpgsql security definer
+set search_path = public
+set row_security = off
+as $$
+declare
+  v_other_admins int;
+begin
+  -- Only care about an admin losing admin status (demotion or deletion).
+  if tg_op = 'UPDATE' and (old.role <> 'admin' or new.role = 'admin') then
+    return new;
+  end if;
+  if tg_op = 'DELETE' and old.role <> 'admin' then
+    return old;
+  end if;
+
+  select count(*) into v_other_admins
+  from public.org_members
+  where org_id = old.org_id and role = 'admin' and id <> old.id;
+
+  if v_other_admins = 0 then
+    raise exception 'cannot remove or demote the last admin of an org';
+  end if;
+
+  if tg_op = 'DELETE' then return old; else return new; end if;
+end; $$;
+
+create trigger org_members_last_admin
+  before update or delete on org_members
+  for each row execute function prevent_last_admin_change();
+
+-- ── One-time backfill (idempotent; no-ops on a fresh database) ─
+-- Number any pre-existing quotes and seed Rev 1 for each. Both are
+-- guarded so re-running the schema does nothing on already-migrated data.
+with ranked as (
+  select q.id,
+    row_number() over (partition by s.org_id order by q.created_at) as rn
+  from public.quotes q
+  join public.departments d on d.id = q.department_id
+  join public.sites s on s.id = d.site_id
+)
+update public.quotes q2
+set quote_number = ranked.rn
+from ranked
+where q2.id = ranked.id and q2.quote_number is null;
+
+insert into public.quote_revisions (quote_id, rev_number, state, created_at, created_by)
+select id, 1, state, created_at, created_by
+from public.quotes
+on conflict (quote_id, rev_number) do nothing;

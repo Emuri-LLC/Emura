@@ -1,12 +1,12 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import DOMPurify from 'dompurify';
 import type { AppState, LaborRate, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
 import InfoIcon from '@/components/InfoIcon';
 import QuoteReview from '@/components/QuoteReview';
 import CostDrivers from '@/components/CostDrivers';
 import { uid } from '@/lib/state';
+import { sanitizeNotes } from '@/lib/sanitize';
 
 interface Props {
   state: AppState;
@@ -22,11 +22,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
 
   useEffect(() => {
     if (notesRef.current) {
-      notesRef.current.innerHTML = DOMPurify.sanitize(state.quote.notes ?? '', {
-        ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'em', 'strong', 'img'],
-        ALLOWED_ATTR: ['src'],
-        ALLOW_DATA_ATTR: false,
-      });
+      notesRef.current.innerHTML = sanitizeNotes(state.quote.notes ?? '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -51,7 +47,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
         false,
         `<img src="${ev.target?.result}" style="max-width:100%;display:block;margin:4px 0;">`
       );
-      if (notesRef.current) setQuote('notes', notesRef.current.innerHTML);
+      if (notesRef.current) setQuote('notes', sanitizeNotes(notesRef.current.innerHTML));
     };
     reader.readAsDataURL(imgItem.getAsFile()!);
   }
@@ -133,7 +129,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
               className="notes-editable"
               onBlur={() => {
                 if (notesRef.current) {
-                  setQuote('notes', notesRef.current.innerHTML);
+                  setQuote('notes', sanitizeNotes(notesRef.current.innerHTML));
                 }
               }}
               onPaste={handleNotesPaste}

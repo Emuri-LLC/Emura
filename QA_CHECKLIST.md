@@ -316,6 +316,24 @@ Requires at least one saved quote with BOM items, material costs entered on the 
 
 ---
 
+## 21. Security Regression (added 2026-05-31)
+
+Covers the security-review fixes. Items marked **(SQL)** require the matching block
+from `emura-app/supabase/schema.sql` to have been run in the Supabase SQL Editor first.
+
+| # | Action | Expected | Pass/Fail |
+|---|--------|----------|-----------|
+| 21.1 | Open Admin → Users tab | Member rows show **email addresses**, not UUID strings (confirms `get_org_member_emails` deployed + guarded) | |
+| 21.2 | **(SQL)** In SQL Editor, impersonate a non-member (`set local request.jwt.claims` with a random `sub`) and call `get_org_member_emails('<any-org-id>')` | Raises `not a member of this org` (cross-tenant enumeration blocked) | |
+| 21.3 | In Notes, paste an image | Inserts inline as a `data:` URL and renders | |
+| 21.4 | Import a JSON quote whose `notes` contains `<img src="https://example.com/x.png">` then open Quote Info | Image `src` is stripped (no external request fired); inspect element shows `<img>` without src | |
+| 21.5 | In Notes, type/paste markup with an event handler (e.g. `<img src=x onerror=alert(1)>`) and reload | No script runs; `onerror` stripped on both write and render | |
+| 21.6 | **(SQL)** In a one-admin org, `update org_members set role='estimator'` on that admin (or delete the row) | Raises `cannot remove or demote the last admin of an org` | |
+| 21.7 | **(SQL)** In a two-admin org, demote one admin | Succeeds (guard only blocks the *last* admin) | |
+| 21.8 | DevTools → Network, load any page | CSP response header has `script-src` **without** `'unsafe-eval'` in production; includes `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` | |
+
+---
+
 ## Sign-off
 
 | Area | Pass | Fail | Notes |
@@ -340,6 +358,7 @@ Requires at least one saved quote with BOM items, material costs entered on the 
 | Parts & Equipment Library (6) | | | |
 | Cost Drivers (6) | | | |
 | Revision Compare (5) | | | |
+| Security Regression (8) | | | |
 | **Total** | | | |
 
 **Deploy approved:** ☐ Yes  ☐ No — blocked on: ___________________________

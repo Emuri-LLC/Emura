@@ -1,5 +1,5 @@
-import DOMPurify from 'dompurify';
 import type { AppState } from './calculations';
+import { sanitizeNotes } from './sanitize';
 
 // ── Storage key ───────────────────────────────────────────────
 
@@ -72,11 +72,7 @@ export function migrateState(s: Record<string, unknown>): AppState {
 
   // Sanitize notes at import time so raw XSS payloads never reach storage.
   if (typeof window !== 'undefined' && state.quote?.notes) {
-    state.quote.notes = DOMPurify.sanitize(state.quote.notes, {
-      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'em', 'strong', 'img'],
-      ALLOWED_ATTR: ['src'],
-      ALLOW_DATA_ATTR: false,
-    });
+    state.quote.notes = sanitizeNotes(state.quote.notes);
   }
 
   // Settings defaults
