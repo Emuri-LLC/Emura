@@ -1,15 +1,7 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 /Users/eohano/Emuri/Emura/.claude/hooks/wrike-git-hook.py"
-          }
-        ]
-      }
+  "permissions": {
+    "allow": [
+      "Edit(/Users/eohano/Emuri/Emura/CLAUDE.md)"
     ]
   }
 }
