@@ -2,3 +2,5 @@
 .ds_store
 .mcp.json
 .claude/current-wrike-task.json
+# Local MCP client config — holds a Wrike client secret; never commit
+/settings.json
