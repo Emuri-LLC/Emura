@@ -1,7 +1,11 @@
 'use client';
 
 import { useDragSort } from '@/hooks/useDragSort';
-import InfoIcon from '@/components/InfoIcon';
+import { TIPS } from '@/components/InfoIcon';
+import SectionCard from '@/components/mcx/SectionCard';
+import NumX from '@/components/mcx/NumX';
+import { Grip, Chip, Note, HelpI } from '@/components/mcx/primitives';
+import Icon from '@/components/mcx/Icon';
 import type { AppState, Break, FinishedGood } from '@/lib/calculations';
 import { uid } from '@/lib/state';
 
@@ -31,13 +35,12 @@ function applyMix(state: AppState, srcBki: number, dstBki: number): AppState {
 }
 
 export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Props) {
-  const brkSort  = useDragSort(state.breaks, brks => onUpdate({ ...state, breaks: brks }));
-  const fgSort   = useDragSort(state.finishedGoods, fgs => onUpdate({ ...state, finishedGoods: fgs }));
+  const brkSort = useDragSort(state.breaks, brks => onUpdate({ ...state, breaks: brks }));
+  const fgSort  = useDragSort(state.finishedGoods, fgs => onUpdate({ ...state, finishedGoods: fgs }));
 
   function setBreak(i: number, field: keyof Break, value: string | number) {
     const breaks = state.breaks.map((b, idx) => idx === i ? { ...b, [field]: value } : b);
     let next: AppState = { ...state, breaks };
-    // Auto-fill mix if a target EAU was just set on a non-first break
     if (field === 'totalEAU' && i > 0 && Number(value) > 0) {
       const srcTotal = totalAnnualUnits(state.finishedGoods, 0);
       const dstEmpty = !state.finishedGoods.some(fg => Number((fg.breaks[i] || {}).eau) > 0);
@@ -47,19 +50,16 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
   }
 
   function setFGField(i: number, field: 'name' | 'description', value: string) {
-    const fgs = state.finishedGoods.map((fg, idx) =>
-      idx === i ? { ...fg, [field]: value } : fg
-    );
+    const fgs = state.finishedGoods.map((fg, idx) => idx === i ? { ...fg, [field]: value } : fg);
     onUpdate({ ...state, finishedGoods: fgs });
   }
 
-  function setEAU(fgi: number, bki: number, value: string) {
+  function setEAU(fgi: number, bki: number, value: number) {
     const fgs = state.finishedGoods.map((fg, i) => {
       if (i !== fgi) return fg;
       const breaks = [...(fg.breaks || [])];
       while (breaks.length <= bki) breaks.push({});
-      const v = Number(value);
-      breaks[bki] = v > 0 ? { eau: v } : {};
+      breaks[bki] = value > 0 ? { eau: value } : {};
       return { ...fg, breaks };
     });
     onUpdate({ ...state, finishedGoods: fgs });
@@ -89,142 +89,126 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
     onUpdate({ ...state, [field]: value });
   }
 
-  // Sum row display
   function sumCell(j: number) {
     const sum = totalAnnualUnits(state.finishedGoods, j);
     const tgt = Number(state.breaks[j]?.totalEAU) || 0;
-    if (!tgt) return <span>{sum.toLocaleString()}</span>;
+    if (!tgt) return <span className="mono">{sum.toLocaleString()}</span>;
     const diff = Math.abs(sum - tgt), pct = diff / tgt;
-    if (diff < 0.01) return <span className="sum-ok">{sum.toLocaleString()} ✓</span>;
-    const cls = pct > 0.05 ? 'sum-err' : 'sum-warn';
-    return <span className={cls}>{sum.toLocaleString()} / {tgt.toLocaleString()}</span>;
+    if (diff < 0.01) return <span className="mono" style={{ color: 'var(--ok-2)' }}>{sum.toLocaleString()} ✓</span>;
+    const col = pct > 0.05 ? 'var(--err)' : 'var(--warn)';
+    return <span className="mono" style={{ color: col }}>{sum.toLocaleString()} / {tgt.toLocaleString()}</span>;
   }
 
   return (
     <>
       {/* ── Volume Breaks ── */}
-      <div className="card">
-        <div className="card-hdr">
-          Volume Breaks
-          <button className="btn btn-add btn-sm" onClick={addBreak}>+ Add Break</button>
-        </div>
-        <div className="card-body">
-          <table style={{ maxWidth: 620 }}>
+      <SectionCard icon="layers" title="Volume Breaks" sub="— order events / year that drive every downstream calc" action="Add Break" onAction={addBreak} bodyPad={false}>
+        <div className="mcx-table-wrap" style={{ margin: 16, maxWidth: 640 }}>
+          <table className="mcx-table">
             <thead><tr>
-              <th></th>
-              <th>Label <InfoIcon k="brkLabel" /></th>
-              <th>Builds / Year <InfoIcon k="brkBpy" /></th>
-              <th>Target Total EAU (opt.) <InfoIcon k="brkEau" /></th>
-              <th></th>
+              <th style={{ width: 26 }} />
+              <th>Label <HelpI tip={TIPS.brkLabel} /></th>
+              <th className="ta-r">Builds / Year <HelpI tip={TIPS.brkBpy} /></th>
+              <th className="ta-r">Target Total EAU <HelpI tip={TIPS.brkEau} /></th>
+              <th style={{ width: 40 }} />
             </tr></thead>
             <tbody>
               {state.breaks.map((b, i) => (
                 <tr key={b.id} {...brkSort.dragProps(i)} className={brkSort.rowClass(i)}>
-                  <td className="drag-h">&#9776;</td>
-                  <td><input type="text" key={b.id + '-label-' + resetKey} defaultValue={b.label} onBlur={e => setBreak(i, 'label', e.target.value)} /></td>
-                  <td><input type="number" min={1} key={b.id + '-bpy-' + resetKey} defaultValue={b.buildsPerYear} onBlur={e => setBreak(i, 'buildsPerYear', Number(e.target.value) || 1)} /></td>
-                  <td><input type="number" min={0} placeholder="optional" key={b.id + '-eau-' + resetKey} defaultValue={b.totalEAU || ''} onBlur={e => setBreak(i, 'totalEAU', Number(e.target.value) || 0)} /></td>
-                  <td>
-                    {state.breaks.length > 1 && (
-                      <button className="btn btn-del btn-sm" onClick={() => deleteBreak(i)}>✕</button>
-                    )}
-                    {state.breaks.length <= 1 && <span style={{ fontSize: 11, color: '#aaa' }}>min 1</span>}
+                  <td className="drag-h"><Grip /></td>
+                  <td><input className="mcx-input" key={b.id + '-label-' + resetKey} defaultValue={b.label} onBlur={e => setBreak(i, 'label', e.target.value)} /></td>
+                  <td className="ta-r"><NumX value={b.buildsPerYear} min={1} key={b.id + '-bpy-' + resetKey} width={96} onCommit={v => setBreak(i, 'buildsPerYear', v || 1)} /></td>
+                  <td className="ta-r"><NumX value={b.totalEAU || 0} min={0} blankZero placeholder="optional" key={b.id + '-eau-' + resetKey} width={110} onCommit={v => setBreak(i, 'totalEAU', v || 0)} /></td>
+                  <td className="ta-c">
+                    {state.breaks.length > 1
+                      ? <button className="mcx-btn is-sm is-quiet is-icon" style={{ color: 'var(--err)' }} onClick={() => deleteBreak(i)}><Icon name="x" size={13} /></button>
+                      : <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>min 1</span>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </SectionCard>
 
       {/* ── Finished Goods ── */}
-      <div className="card">
-        <div className="card-hdr">
-          Finished Goods — EAU per Break <InfoIcon k="fgEau" />
-          <button className="btn btn-add btn-sm" onClick={addFG}>+ Add FG</button>
-        </div>
-        <div className="card-body">
-          {/* Primary selection: drives quote-list cost, operations pc/hr helpers, and cost drivers */}
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
-            <span style={{ fontWeight: 600, fontSize: 12, color: '#1a2940' }}>Primary FG + Break</span>
-            <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, color: '#555' }}>
-              SKU
-              <select value={state.primaryFgId ?? ''} onChange={e => setPrimary('primaryFgId', e.target.value)}
-                style={{ padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}>
-                <option value="">—</option>
-                {state.finishedGoods.map(fg => <option key={fg.id} value={fg.id}>{fg.name || '(unnamed)'}</option>)}
-              </select>
-            </label>
-            <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12, color: '#555' }}>
-              Break
-              <select value={state.primaryBreakId ?? ''} onChange={e => setPrimary('primaryBreakId', e.target.value)}
-                style={{ padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}>
-                <option value="">—</option>
-                {state.breaks.map(b => <option key={b.id} value={b.id}>{b.label || '(unnamed)'}</option>)}
-              </select>
-            </label>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>Used for the quote-list cost, Operations rate helpers, and Cost Drivers.</span>
-          </div>
-          {state.finishedGoods.length === 0 && <p className="empty-msg">No finished goods yet.</p>}
-          {state.finishedGoods.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
-              <table>
-                <thead><tr>
-                  <th></th>
-                  <th>FG Name <InfoIcon k="fgName" /></th>
-                  <th>Description</th>
-                  {state.breaks.map((b, j) => {
-                    const hasData = state.finishedGoods.some(fg => Number((fg.breaks[j] || {}).eau) > 0);
-                    const tgt = Number(b.totalEAU) || 0;
-                    return (
-                      <th key={b.id} style={{ textAlign: 'center', minWidth: 90 }}>
-                        {b.label}<br />
-                        <span style={{ fontWeight: 400, fontSize: 11 }}>{b.buildsPerYear}×/yr{tgt > 0 ? ` | tgt: ${tgt.toLocaleString()}` : ''}</span>
-                        {hasData && state.breaks.length > 1 && (
-                          <><br />
-                          <button className="btn-mix" onClick={() => {
+      <SectionCard
+        icon="layers" title="Finished Goods" sub="— end items this quote produces; EAU per break"
+        action="Add FG" onAction={addFG} bodyPad={false}
+        right={
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--ink-3)', marginRight: 6 }}>
+            Primary break
+            <select className="mcx-input" style={{ height: 26, width: 130, fontSize: 12 }}
+              value={state.primaryBreakId ?? ''} onChange={e => setPrimary('primaryBreakId', e.target.value)}>
+              <option value="">—</option>
+              {state.breaks.map(b => <option key={b.id} value={b.id}>{b.label || '(unnamed)'}</option>)}
+            </select>
+          </label>
+        }
+      >
+        {state.finishedGoods.length === 0 && (
+          <div style={{ padding: 16 }}><Note kind="accent">No finished goods yet — add one to start. The <b>Primary</b> FG + break sets takt and the line rate for shared operations.</Note></div>
+        )}
+        {state.finishedGoods.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="mcx-table">
+              <thead><tr>
+                <th style={{ width: 26 }} />
+                <th>FG Name <HelpI tip={TIPS.fgName} /></th>
+                <th>Description</th>
+                {state.breaks.map((b, j) => {
+                  const hasData = state.finishedGoods.some(fg => Number((fg.breaks[j] || {}).eau) > 0);
+                  const tgt = Number(b.totalEAU) || 0;
+                  return (
+                    <th key={b.id} className="ta-r" style={{ minWidth: 110 }}>
+                      {b.label}
+                      <div style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)' }}>
+                        {b.buildsPerYear}×/yr{tgt > 0 ? ` · tgt ${tgt.toLocaleString()}` : ''}
+                      </div>
+                      {hasData && state.breaks.length > 1 && (
+                        <button className="mcx-btn is-sm is-quiet" style={{ color: 'var(--accent-ink)', height: 20, marginTop: 2 }}
+                          onClick={() => {
                             let next = state;
                             state.breaks.forEach((_, k) => { if (k !== j && Number(state.breaks[k].totalEAU) > 0) next = applyMix(next, j, k); });
                             onUpdate(next);
-                          }}>→ Push mix</button></>
-                        )}
-                      </th>
-                    );
-                  })}
-                  <th></th>
-                </tr></thead>
-                <tbody>
-                  {state.finishedGoods.map((fg, i) => (
-                    <tr key={fg.id} {...fgSort.dragProps(i)} className={fgSort.rowClass(i)}>
-                      <td className="drag-h">&#9776;</td>
-                      <td><input type="text" key={fg.id + '-name-' + resetKey} defaultValue={fg.name} onBlur={e => setFGField(i, 'name', e.target.value)} /></td>
-                      <td><input type="text" key={fg.id + '-desc-' + resetKey} defaultValue={fg.description ?? ''} onBlur={e => setFGField(i, 'description', e.target.value)} /></td>
-                      {state.breaks.map((_, j) => (
-                        <td key={j} style={{ textAlign: 'center' }}>
-                          <input type="number" min={0}
-                            key={fg.id + '-' + j + '-eau-' + resetKey}
-                            defaultValue={Number((fg.breaks[j] || {}).eau) || ''}
-                            onBlur={e => setEAU(i, j, e.target.value)} />
-                        </td>
-                      ))}
-                      <td><button className="btn btn-del btn-sm" onClick={() => deleteFG(i)}>✕</button></td>
-                    </tr>
-                  ))}
-                  {/* Sum row */}
-                  <tr className="sum-row">
-                    <td></td>
-                    <td colSpan={2} style={{ textAlign: 'right', color: '#555' }}>EAU Sum →</td>
+                          }}>→ Push mix</button>
+                      )}
+                    </th>
+                  );
+                })}
+                <th className="ta-c">Primary</th>
+                <th style={{ width: 40 }} />
+              </tr></thead>
+              <tbody>
+                {state.finishedGoods.map((fg, i) => (
+                  <tr key={fg.id} {...fgSort.dragProps(i)} className={fgSort.rowClass(i)}>
+                    <td className="drag-h"><Grip /></td>
+                    <td><input className="mcx-input is-mono" style={{ width: 120 }} key={fg.id + '-name-' + resetKey} defaultValue={fg.name} onBlur={e => setFGField(i, 'name', e.target.value)} /></td>
+                    <td><input className="mcx-input" style={{ minWidth: 220 }} key={fg.id + '-desc-' + resetKey} defaultValue={fg.description ?? ''} onBlur={e => setFGField(i, 'description', e.target.value)} /></td>
                     {state.breaks.map((_, j) => (
-                      <td key={j} style={{ textAlign: 'center' }}>{sumCell(j)}</td>
+                      <td key={j} className="ta-r">
+                        <NumX value={Number((fg.breaks[j] || {}).eau) || 0} min={0} blankZero width={96}
+                          key={fg.id + '-' + j + '-eau-' + resetKey} onCommit={v => setEAU(i, j, v)} />
+                      </td>
                     ))}
-                    <td></td>
+                    <td className="ta-c">
+                      {state.primaryFgId === fg.id
+                        ? <Chip kind="ok"><Icon name="check" size={11} sw={2.4} />Primary</Chip>
+                        : <button className="mcx-btn is-sm is-quiet" style={{ color: 'var(--ink-3)' }} onClick={() => setPrimary('primaryFgId', fg.id)}>Set</button>}
+                    </td>
+                    <td className="ta-c"><button className="mcx-btn is-sm is-quiet is-icon" style={{ color: 'var(--err)' }} onClick={() => deleteFG(i)}><Icon name="x" size={13} /></button></td>
                   </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+                ))}
+                <tr>
+                  <td /><td colSpan={2} className="ta-r" style={{ color: 'var(--ink-3)', fontWeight: 600 }}>EAU Sum →</td>
+                  {state.breaks.map((_, j) => <td key={j} className="ta-r">{sumCell(j)}</td>)}
+                  <td /><td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
     </>
   );
 }

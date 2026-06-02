@@ -105,9 +105,7 @@ export default function EquipmentSelector({
           {filteredQuote.length > 0 && (
             <>
               {libraryEquipment.length > 0 && (
-                <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb' }}>
-                  From this quote
-                </div>
+                <div className="eq-sec">From this quote</div>
               )}
               {filteredQuote.map(eq => (
                 <div key={eq.id} className="eq-item">
@@ -127,9 +125,7 @@ export default function EquipmentSelector({
           {/* From library */}
           {filteredLib.length > 0 && (
             <>
-              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb', borderTop: filteredQuote.length > 0 ? '1px solid #eee' : undefined }}>
-                From library
-              </div>
+              <div className="eq-sec" style={{ borderTop: filteredQuote.length > 0 ? '1px solid var(--hairline)' : undefined }}>From library</div>
               {filteredLib.map(le => (
                 <div key={le.id} className="eq-item">
                   <label
@@ -141,8 +137,8 @@ export default function EquipmentSelector({
                     }}
                   >
                     {le.name}
-                    {le.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
-                    <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
+                    {le.locked && <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--warn)' }}>locked</span>}
+                    <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--ok-2)' }}>← copy</span>
                   </label>
                 </div>
               ))}
@@ -159,7 +155,7 @@ export default function EquipmentSelector({
           )}
 
           {!filteredQuote.length && !filteredLib.length && !showCreate && (
-            <div style={{ padding: '6px 8px', color: '#aaa', fontSize: 12 }}>
+            <div style={{ padding: '6px 8px', color: 'var(--ink-4)', fontSize: 12 }}>
               No equipment defined
             </div>
           )}

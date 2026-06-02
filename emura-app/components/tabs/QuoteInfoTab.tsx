@@ -2,9 +2,13 @@
 
 import { useRef, useEffect } from 'react';
 import type { AppState, LaborRate, LibraryPart, LibraryEquipment, ReviewItem } from '@/lib/calculations';
-import InfoIcon from '@/components/InfoIcon';
+import { TIPS } from '@/components/InfoIcon';
 import QuoteReview from '@/components/QuoteReview';
 import CostDrivers from '@/components/CostDrivers';
+import SectionCard from '@/components/mcx/SectionCard';
+import NumX from '@/components/mcx/NumX';
+import Icon from '@/components/mcx/Icon';
+import { Note, HelpI } from '@/components/mcx/primitives';
 import { uid } from '@/lib/state';
 import { sanitizeNotes } from '@/lib/sanitize';
 
@@ -21,20 +25,15 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
   const notesRef = useRef<HTMLDivElement>(null);
 
   // Re-runs on resetKey change (import / undo / redo / new) so the contenteditable
-  // picks up freshly-loaded notes. Deliberately NOT keyed on state.quote.notes —
-  // that would clobber the cursor on every keystroke (the div is uncontrolled;
-  // edits are committed via onBlur, not re-rendered through this effect).
+  // picks up freshly-loaded notes. Deliberately NOT keyed on state.quote.notes.
   useEffect(() => {
-    if (notesRef.current) {
-      notesRef.current.innerHTML = sanitizeNotes(state.quote.notes ?? '');
-    }
+    if (notesRef.current) notesRef.current.innerHTML = sanitizeNotes(state.quote.notes ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
   function setQuote(field: keyof AppState['quote'], value: string) {
     onUpdate({ ...state, quote: { ...state.quote, [field]: value } });
   }
-
   function setSettings(field: keyof AppState['settings'], value: number) {
     onUpdate({ ...state, settings: { ...state.settings, [field]: value } });
   }
@@ -46,11 +45,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
     e.preventDefault();
     const reader = new FileReader();
     reader.onload = ev => {
-      document.execCommand(
-        'insertHTML',
-        false,
-        `<img src="${ev.target?.result}" style="max-width:100%;display:block;margin:4px 0;">`
-      );
+      document.execCommand('insertHTML', false, `<img src="${ev.target?.result}" style="max-width:100%;display:block;margin:4px 0;">`);
       if (notesRef.current) setQuote('notes', sanitizeNotes(notesRef.current.innerHTML));
     };
     reader.readAsDataURL(imgItem.getAsFile()!);
@@ -62,182 +57,115 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
     const cmd = cmds[e.key.toLowerCase()];
     if (!cmd) return;
     e.preventDefault();
-    // styleWithCSS=false makes execCommand emit tag markup (<b>/<i>/<u>) rather
-    // than styled spans, so the formatting survives sanitizeNotes (which allows
-    // those tags but strips span/style). onBlur commits the result to state.
     document.execCommand('styleWithCSS', false, 'false');
     document.execCommand(cmd);
   }
 
-  // ── Labor rate helpers ────────────────────────────────────────
   function setRate(idx: number, patch: Partial<LaborRate>) {
     const next = state.laborRates.map((r, i) => i === idx ? { ...r, ...patch } : r);
     onUpdate({ ...state, laborRates: next });
   }
-
   function addRate() {
-    const newRate: LaborRate = { id: uid(), name: '', rate: 0 };
-    onUpdate({ ...state, laborRates: [...state.laborRates, newRate] });
+    onUpdate({ ...state, laborRates: [...state.laborRates, { id: uid(), name: '', rate: 0 }] });
   }
-
   function deleteRate(idx: number) {
     const rateId = state.laborRates[idx].id;
     const next = state.laborRates.filter((_, i) => i !== idx);
-    // Clear rateId from any ops that referenced the deleted rate
     const directOps = state.directOps.map(op => op.rateId === rateId ? { ...op, rateId: '' } : op);
     const indirectOps = state.indirectOps.map(op => op.rateId === rateId ? { ...op, rateId: '' } : op);
     onUpdate({ ...state, laborRates: next, directOps, indirectOps });
   }
 
   return (
-    <>
-    <div className="grid2">
+    <div style={{ display: 'grid', gridTemplateColumns: '452px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
 
-      {/* ── Quote Information ── */}
-      <div className="card">
-        <div className="card-hdr">Quote Information</div>
-        <div className="card-body">
-
-          <div className="fgrp">
-            <label>Quote Name <InfoIcon k="qname" /></label>
-            <input
-              type="text"
-              key={'name-' + resetKey}
-              defaultValue={state.quote.name}
-              onBlur={e => setQuote('name', e.target.value)}
-            />
+      {/* ── LEFT RAIL ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <SectionCard icon="doc" title="Quote Information">
+          <div className="mcx-field">
+            <span className="mcx-label">Quote Name <HelpI tip={TIPS.qname} /></span>
+            <input className="mcx-input" key={'name-' + resetKey} defaultValue={state.quote.name} onBlur={e => setQuote('name', e.target.value)} />
           </div>
-
-          <div className="fgrp">
-            <label>Customer <InfoIcon k="customer" /></label>
-            <input
-              type="text"
-              key={'customer-' + resetKey}
-              defaultValue={state.quote.customer}
-              onBlur={e => setQuote('customer', e.target.value)}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="mcx-field">
+              <span className="mcx-label">Customer <HelpI tip={TIPS.customer} /></span>
+              <input className="mcx-input" key={'customer-' + resetKey} defaultValue={state.quote.customer} onBlur={e => setQuote('customer', e.target.value)} />
+            </div>
+            <div className="mcx-field">
+              <span className="mcx-label">Date <HelpI tip={TIPS.date} /></span>
+              <input className="mcx-input" type="date" value={state.quote.date} onChange={e => setQuote('date', e.target.value)} />
+            </div>
           </div>
-
-          <div className="fgrp">
-            <label>Date <InfoIcon k="date" /></label>
-            <input
-              type="date"
-              value={state.quote.date}
-              onChange={e => setQuote('date', e.target.value)}
-            />
+          <div className="mcx-field">
+            <span className="mcx-label">Revision Note <HelpI tip={TIPS.rev} /></span>
+            <input className="mcx-input" placeholder="Brief note about this working draft…" value={state.quote.revision} onChange={e => setQuote('revision', e.target.value)} />
           </div>
-
-          <div className="fgrp">
-            <label>Revision Note <InfoIcon k="rev" /></label>
-            <input
-              type="text"
-              placeholder="Brief note about this working draft…"
-              value={state.quote.revision}
-              onChange={e => setQuote('revision', e.target.value)}
-            />
-          </div>
-
-          <div className="fgrp">
-            <label>Notes <InfoIcon k="notes" /></label>
+          <div className="mcx-field">
+            <span className="mcx-label">Notes <HelpI tip={TIPS.notes} /></span>
             <div
               ref={notesRef}
               contentEditable
               suppressContentEditableWarning
-              className="notes-editable"
-              onBlur={() => {
-                if (notesRef.current) {
-                  setQuote('notes', sanitizeNotes(notesRef.current.innerHTML));
-                }
-              }}
+              className="mcx-notes"
+              data-placeholder="Free-text notes. Paste an image to embed it."
+              onBlur={() => { if (notesRef.current) setQuote('notes', sanitizeNotes(notesRef.current.innerHTML)); }}
               onKeyDown={handleNotesKeyDown}
               onPaste={handleNotesPaste}
             />
           </div>
+        </SectionCard>
 
-        </div>
-      </div>
-
-      {/* ── Cost Settings ── */}
-      <div className="card">
-        <div className="card-hdr">Cost Settings</div>
-        <div className="card-body">
-
-          <div className="fgrp">
-            <label>Working Hours / Year <InfoIcon k="wkHrs" /></label>
-            <input
-              type="number"
-              key={'wkh-' + resetKey}
-              defaultValue={state.settings.workingHoursPerYear}
-              onBlur={e => setSettings('workingHoursPerYear', parseFloat(e.target.value) || 0)}
-            />
+        <SectionCard icon="gear" title="Cost Settings">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="mcx-field">
+              <span className="mcx-label">Hours / Year <HelpI tip={TIPS.wkHrs} /></span>
+              <NumX value={state.settings.workingHoursPerYear} min={0} key={'wkh-' + resetKey} onCommit={v => setSettings('workingHoursPerYear', v)} />
+            </div>
+            <div className="mcx-field">
+              <span className="mcx-label">CapEx (yrs) <HelpI tip={TIPS.capexYrs} /></span>
+              <NumX value={state.settings.capexYears} min={0} key={'cy-' + resetKey} onCommit={v => setSettings('capexYears', v)} />
+            </div>
           </div>
 
-          <div className="fgrp">
-            <label>CapEx Depreciation Period (years) <InfoIcon k="capexYrs" /></label>
-            <input
-              type="number"
-              key={'cy-' + resetKey}
-              defaultValue={state.settings.capexYears}
-              onBlur={e => setSettings('capexYears', parseFloat(e.target.value) || 0)}
-            />
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <label style={{ fontWeight: 600, fontSize: 12, color: '#1a2940' }}>
-                Labor Rates ($/hr) <InfoIcon k="shopRate" />
-              </label>
-              <button className="btn btn-add btn-sm" onClick={addRate}>+ Add Rate</button>
+          <div className="mcx-field" style={{ marginTop: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="mcx-label">Labor Rates <HelpI tip={TIPS.shopRate} /></span>
+              <button className="mcx-btn is-sm is-quiet" style={{ color: 'var(--accent-ink)' }} onClick={addRate}><Icon name="plus" size={12} />Add Rate</button>
             </div>
             {state.laborRates.length === 0 && (
-              <div className="inline-warn">
-                No labor rates defined. Operations will use $0/hr. Add at least one rate.
+              <Note kind="warn" style={{ marginTop: 2 }}>No labor rates defined. Operations will use $0/hr. Add at least one rate.</Note>
+            )}
+            {state.laborRates.length > 0 && (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginTop: 2 }}>
+                {state.laborRates.map((r, i) => (
+                  <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr 150px 28px', alignItems: 'center', gap: 8, padding: '8px 10px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+                    <input className="mcx-input" style={{ height: 28 }} placeholder="Rate name" key={r.id + '-name-' + resetKey} defaultValue={r.name} onBlur={e => setRate(i, { name: e.target.value })} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <NumX value={r.rate || 0} min={0} blankZero suffix="$" width={92} key={r.id + '-rate-' + resetKey} onCommit={v => setRate(i, { rate: v })} />
+                      <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>/hr</span>
+                    </div>
+                    <button className="mcx-btn is-sm is-quiet is-icon" style={{ color: 'var(--err)' }} onClick={() => deleteRate(i)}><Icon name="x" size={13} /></button>
+                  </div>
+                ))}
               </div>
             )}
-            {state.laborRates.map((r, i) => (
-              <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-                <input
-                  type="text"
-                  placeholder="Rate name (e.g. Shop Rate)"
-                  key={r.id + '-name-' + resetKey}
-                  defaultValue={r.name}
-                  onBlur={e => setRate(i, { name: e.target.value })}
-                  style={{ flex: 2 }}
-                />
-                <span style={{ color: '#888', fontSize: 12 }}>$</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  key={r.id + '-rate-' + resetKey}
-                  defaultValue={r.rate || ''}
-                  onBlur={e => setRate(i, { rate: parseFloat(e.target.value) || 0 })}
-                  style={{ flex: 1, maxWidth: 80 }}
-                />
-                <span style={{ color: '#888', fontSize: 12 }}>/hr</span>
-                <button className="btn btn-del btn-sm" onClick={() => deleteRate(i)}>✕</button>
-              </div>
-            ))}
           </div>
+        </SectionCard>
 
-        </div>
+        <Note kind="accent">Every keystroke recalculates the full quote. No <b>Calculate</b> button — the figure in the ribbon is always live.</Note>
       </div>
 
+      {/* ── RIGHT WORKING AREA ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <QuoteReview
+          state={state}
+          libraryParts={libraryParts}
+          libraryEquipment={libraryEquipment}
+          onUpdate={onUpdate}
+          onPushToLibrary={onPushToLibrary ?? (() => {})}
+        />
+        <CostDrivers state={state} />
+      </div>
     </div>
-
-    {/* ── Quote Review ── */}
-    <QuoteReview
-      state={state}
-      libraryParts={libraryParts}
-      libraryEquipment={libraryEquipment}
-      onUpdate={onUpdate}
-      onPushToLibrary={onPushToLibrary ?? (() => {})}
-    />
-
-    {/* ── Top Cost Drivers ── */}
-    <CostDrivers state={state} />
-
-    </>
   );
 }

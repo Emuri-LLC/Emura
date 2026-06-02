@@ -78,7 +78,7 @@ export default function LaborRateSelector({
           {selectedId && (
             <div className="eq-item">
               <label onMouseDown={e => e.preventDefault()} onClick={() => pick('')}>
-                <span style={{ color: '#888', fontSize: 11 }}>— Use default rate —</span>
+                <span style={{ color: 'var(--ink-3)', fontSize: 11 }}>— Use default rate —</span>
               </label>
             </div>
           )}
@@ -86,14 +86,12 @@ export default function LaborRateSelector({
           {/* From this quote */}
           {filteredQuote.length > 0 && (
             <>
-              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb' }}>
-                From this quote
-              </div>
+              <div className="eq-sec">From this quote</div>
               {filteredQuote.map(r => (
                 <div key={r.id} className="eq-item">
                   <label onMouseDown={e => e.preventDefault()} onClick={() => pick(r.id)}>
                     <input type="radio" readOnly checked={selectedId === r.id} style={{ width: 'auto' }} />
-                    {' '}{r.name} <span style={{ color: '#888', fontSize: 11 }}>— ${r.rate}/hr</span>
+                    {' '}{r.name} <span style={{ color: 'var(--ink-3)', fontSize: 11 }}>— ${r.rate}/hr</span>
                   </label>
                 </div>
               ))}
@@ -103,9 +101,7 @@ export default function LaborRateSelector({
           {/* From library */}
           {newFromLib.length > 0 && (
             <>
-              <div style={{ padding: '3px 8px 1px', fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f9fafb', borderTop: '1px solid #eee' }}>
-                From library
-              </div>
+              <div className="eq-sec" style={{ borderTop: '1px solid var(--hairline)' }}>From library</div>
               {newFromLib.map(lr => (
                 <div key={lr.id} className="eq-item">
                   <label
@@ -116,9 +112,9 @@ export default function LaborRateSelector({
                       setOpen(false);
                     }}
                   >
-                    {lr.name} <span style={{ color: '#888', fontSize: 11 }}>— ${lr.rate}/hr</span>
-                    {lr.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
-                    <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
+                    {lr.name} <span style={{ color: 'var(--ink-3)', fontSize: 11 }}>— ${lr.rate}/hr</span>
+                    {lr.locked && <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--warn)' }}>locked</span>}
+                    <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--ok-2)' }}>← copy</span>
                   </label>
                 </div>
               ))}
@@ -135,7 +131,7 @@ export default function LaborRateSelector({
           )}
 
           {filteredQuote.length === 0 && newFromLib.length === 0 && !showCreate && (
-            <div style={{ padding: '6px 8px', color: '#aaa', fontSize: 12 }}>
+            <div style={{ padding: '6px 8px', color: 'var(--ink-4)', fontSize: 12 }}>
               No rates — type to create
             </div>
           )}

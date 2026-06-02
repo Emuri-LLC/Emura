@@ -1,0 +1,356 @@
+/* ============================================================
+   Manufacturing Cost Estimator — COOL-DARK redesign system
+   "Instrument, not interface." Cool slate surfaces · ice-cyan accent.
+   GREEN is reserved exclusively for the COMPLETE tab status, so it
+   can never be confused with the cyan accent (current / primary).
+   All rules scoped under .mcx so they never collide with the warm
+   .mce system or other chrome.
+
+   Fonts are loaded via next/font in app/layout.tsx and exposed as
+   --font-hanken / --font-plex CSS variables on <html>.
+   ============================================================ */
+
+.mcx {
+  /* ---- cool slate / gunmetal surfaces (hue ~225, very low chroma) ---- */
+  --bg:        #0b1014;
+  --surface:   #111922;
+  --surface-2: #16212c;
+  --surface-3: #1d2a36;
+  --raised:    #243341;
+  --hairline:  #1c2832;
+  --border:    #273744;
+  --border-strong: #38505f;
+
+  /* ---- ink (cool desaturated) ---- */
+  --ink:   #e8eef4;
+  --ink-2: #a3b4c2;
+  --ink-3: #6f8190;
+  --ink-4: #4a5b69;
+
+  /* ---- ICE-CYAN accent = CURRENT tab + primary action ---- */
+  --accent:        #2bc6e4;
+  --accent-hover:  #4ad8f2;
+  --accent-ink:    #58d3ee;          /* accent text / links on dark */
+  --accent-tint:   #0a2630;
+  --accent-tint-2: #0f3340;
+  --accent-border: #1b4d5e;
+  --accent-glow:   0 0 0 1px rgba(43,198,228,.5), 0 0 16px -2px rgba(43,198,228,.4);
+
+  /* ---- status: GREEN = complete, only ever this hue ---- */
+  --ok:     #46c97a;
+  --ok-2:   #63d893;
+  --ok-bg:  #0e2a1c;
+  --ok-border: #1d4a32;
+
+  --warn:   #e0a93c;
+  --warn-bg: #2a2210;
+  --warn-border: #483a17;
+
+  --err:    #ef6360;
+  --err-bg: #2c1413;
+  --err-border: #4b2422;
+
+  --info-bg: #14202a;
+  --info-border: #243340;
+
+  /* ---- category ramp (oklch, lifted L/C for dark surfaces) ---- */
+  --cat-1: oklch(0.70 0.15 28);   /* subcontract — coral */
+  --cat-2: oklch(0.74 0.14 158);  /* direct labor — green */
+  --cat-3: oklch(0.72 0.13 245);  /* material — blue */
+  --cat-4: oklch(0.78 0.13 86);   /* indirect labor — amber */
+  --cat-5: oklch(0.70 0.16 305);  /* equipment — violet */
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-md: 0 2px 6px rgba(0,0,0,.3), 0 14px 34px rgba(0,0,0,.4);
+
+  font-family: var(--font-hanken), -apple-system, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 13px;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+.mcx *, .mcx *::before, .mcx *::after { box-sizing: border-box; }
+.mcx .mono { font-family: var(--font-plex), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mcx .num  { font-variant-numeric: tabular-nums; }
+.mcx .eyebrow, .mcx-eyebrow {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ============================================================ Utility bar (tier 1, slim) */
+.mcx-util {
+  display: flex; align-items: center; gap: 12px;
+  height: 46px; padding: 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--hairline);
+  flex-wrap: wrap;
+}
+.mcx-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--ink-2); font-weight: 600; font-size: 12.5px;
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+  background: none; border: none; font-family: inherit;
+}
+.mcx-back:hover { color: var(--ink); }
+.mcx-brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.mcx-brand-mark {
+  width: 22px; height: 22px; border-radius: 6px;
+  background: linear-gradient(150deg, var(--accent), #1690a8);
+  color: #03222a; display: grid; place-items: center; font-weight: 800; font-size: 12px;
+  flex: 0 0 auto;
+}
+.mcx-brand-name { font-weight: 700; font-size: 13.5px; letter-spacing: -.2px; white-space: nowrap; }
+.mcx-brand-sub { color: var(--ink-3); font-weight: 500; font-size: 12px; white-space: nowrap; }
+.mcx-divider { width: 1px; height: 20px; background: var(--border); flex: 0 0 auto; }
+.mcx-spacer { flex: 1 1 auto; }
+.mcx-save { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.mcx-livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); flex: 0 0 auto; }
+
+/* ---- buttons ---- */
+.mcx-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 11px;
+  border-radius: 7px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--ink-2);
+  font-family: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+  cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+}
+.mcx-btn:hover { background: var(--surface-3); border-color: var(--border-strong); color: var(--ink); }
+.mcx-btn.is-quiet { border-color: transparent; background: transparent; }
+.mcx-btn.is-quiet:hover { background: var(--surface-3); }
+.mcx-btn.is-primary { background: var(--accent); border-color: var(--accent); color: #042027; font-weight: 700; }
+.mcx-btn.is-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.mcx-btn.is-icon { width: 30px; padding: 0; }
+.mcx-btn.is-sm { height: 26px; padding: 0 9px; font-size: 12px; }
+.mcx-btn.is-sm.is-icon { width: 26px; padding: 0; }
+.mcx-btn[disabled] { opacity: .35; cursor: default; }
+.mcx-kbd {
+  font-family: var(--font-plex), monospace; font-size: 10.5px; font-weight: 500;
+  color: var(--ink-4); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 4px; line-height: 1;
+}
+
+/* ============================================================ Annual cost readout (top-right of ribbon) */
+.mcx-annual { display: flex; align-items: center; gap: 14px; padding: 0 6px 0 18px; height: 100%; }
+.mcx-annual-block { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1; }
+.mcx-annual-label { font-size: 9.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.mcx-annual-fig {
+  font-family: var(--font-plex), monospace; font-variant-numeric: tabular-nums;
+  font-size: 27px; font-weight: 600; letter-spacing: -1px; color: var(--ink);
+}
+.mcx-annual-fig .cur { color: var(--ink-3); font-size: 17px; font-weight: 500; }
+.mcx-annual-fig .unit { color: var(--ink-3); font-size: 14px; font-weight: 500; letter-spacing: 0; }
+.mcx-delta { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-plex), monospace; font-size: 11px; font-weight: 600; }
+.mcx-delta.up { color: var(--err); }
+.mcx-delta.down { color: var(--ok-2); }
+
+/* ============================================================ RIBBON shell */
+.mcx-ribbon {
+  display: flex; align-items: stretch;
+  height: 64px; padding: 0 8px 0 10px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+.mcx-ribbon-nav { display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0; }
+
+/* status glyph dot, shared across ribbon variants */
+.mcx-stat { width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; }
+.mcx-stat.ok   { background: var(--ok-bg);  color: var(--ok-2);  box-shadow: inset 0 0 0 1px var(--ok-border); }
+.mcx-stat.err  { background: var(--err-bg); color: var(--err);   box-shadow: inset 0 0 0 1px var(--err-border); }
+.mcx-stat.warn { background: var(--warn-bg);color: var(--warn);  box-shadow: inset 0 0 0 1px var(--warn-border); }
+.mcx-stat.idle { background: transparent;   color: var(--ink-4); box-shadow: inset 0 0 0 1px var(--border); }
+.mcx-stat.cur  { background: var(--accent); color: #04222a; box-shadow: 0 0 10px -1px var(--accent); }
+
+/* ---------- DOTS-ON-A-LINE STEPPER ---------- */
+.mcx-step { display: flex; align-items: center; flex: 1 1 auto; padding: 0 10px; min-width: 0; }
+.mcx-step-item {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  flex: 0 0 auto; cursor: pointer; padding: 6px 2px;
+  background: none; border: none; font-family: inherit;
+}
+.mcx-step-node {
+  width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-3); box-shadow: inset 0 0 0 1.5px var(--border); color: var(--ink-4);
+  position: relative; z-index: 1; transition: all .12s;
+}
+.mcx-step-item.ok  .mcx-step-node { background: var(--ok-bg);  color: var(--ok-2);  box-shadow: inset 0 0 0 1.5px var(--ok-border); }
+.mcx-step-item.err .mcx-step-node { background: var(--err-bg); color: var(--err);   box-shadow: inset 0 0 0 1.5px var(--err-border); }
+.mcx-step-item.warn .mcx-step-node{ background: var(--warn-bg);color: var(--warn);  box-shadow: inset 0 0 0 1.5px var(--warn-border); }
+.mcx-step-item.cur .mcx-step-node { background: var(--accent); color: #04222a; box-shadow: var(--accent-glow); }
+.mcx-step-label { font-size: 11px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.mcx-step-item.cur .mcx-step-label { color: var(--accent-ink); }
+.mcx-step-item:hover .mcx-step-label { color: var(--ink); }
+.mcx-step-badge {
+  position: absolute; top: 2px; right: -4px; z-index: 2;
+  min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px;
+  background: var(--err); color: #2c0c0b; font-family: var(--font-plex), monospace;
+  font-size: 9px; font-weight: 700; display: grid; place-items: center; line-height: 1;
+}
+.mcx-step-conn { flex: 1 1 auto; height: 2px; background: var(--border); border-radius: 2px; position: relative; top: -11px; min-width: 10px; }
+.mcx-step-conn.done { background: var(--ok-border); }
+
+/* ============================================================ Cards */
+.mcx-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.mcx-card-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--hairline); }
+.mcx-card-title { font-size: 13px; font-weight: 700; letter-spacing: -.1px; white-space: nowrap; }
+.mcx-card-sub { color: var(--ink-3); font-size: 12px; font-weight: 500; }
+.mcx-card-body { padding: 16px; }
+
+/* ============================================================ Forms */
+.mcx-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.mcx-field:last-child { margin-bottom: 0; }
+.mcx-label { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.mcx-help-i {
+  width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--border-strong);
+  color: var(--ink-4); font-size: 9px; font-weight: 700; display: inline-grid; place-items: center;
+  cursor: help; flex: 0 0 auto;
+}
+.mcx-input {
+  height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface-2); color: var(--ink); font-family: inherit; font-size: 13px; width: 100%;
+  transition: border-color .12s, box-shadow .12s;
+}
+.mcx-input::placeholder { color: var(--ink-4); }
+.mcx-input:focus, .mcx-input.is-focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,198,228,.16); }
+.mcx-input.is-num { text-align: right; font-family: var(--font-plex), monospace; font-variant-numeric: tabular-nums; }
+.mcx-input.is-mono { font-family: var(--font-plex), monospace; font-weight: 600; }
+textarea.mcx-input { height: auto; padding: 8px 10px; line-height: 1.5; resize: none; }
+select.mcx-input { appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 18 18' fill='none' stroke='%236f8190' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center; padding-right: 26px; }
+
+.mcx-num { display: flex; align-items: stretch; height: 32px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--surface-2); transition: border-color .12s, box-shadow .12s; }
+.mcx-num.is-focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,198,228,.16); }
+.mcx-num input { border: none; background: none; text-align: right; width: 100%; font-family: var(--font-plex), monospace; font-variant-numeric: tabular-nums; font-size: 13px; padding: 0 9px; color: var(--ink); min-width: 0; }
+.mcx-num input:focus { outline: none; }
+.mcx-num-steps { display: flex; flex-direction: column; width: 18px; border-left: 1px solid var(--hairline); flex: 0 0 auto; }
+.mcx-num-steps button { flex: 1; border: none; background: var(--surface-3); color: var(--ink-3); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.mcx-num-steps button:hover { background: var(--raised); color: var(--ink); }
+.mcx-num-steps button + button { border-top: 1px solid var(--hairline); }
+.mcx-affix { display: inline-flex; align-items: center; color: var(--ink-3); font-size: 12px; padding: 0 8px; }
+
+/* ============================================================ Notes / banners */
+.mcx-note { display: flex; align-items: flex-start; gap: 9px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.45; background: var(--info-bg); border: 1px solid var(--info-border); color: var(--ink-2); }
+.mcx-note.is-accent { background: var(--accent-tint); border-color: var(--accent-border); color: var(--accent-ink); }
+.mcx-note.is-warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); }
+.mcx-note b { font-weight: 700; color: var(--ink); }
+.mcx-note.is-warn b { color: var(--warn); }
+.mcx-note-ic { flex: 0 0 auto; margin-top: 1px; color: var(--ink-3); }
+.mcx-note.is-warn .mcx-note-ic { color: var(--warn); }
+.mcx-note.is-accent .mcx-note-ic { color: var(--accent); }
+
+/* ============================================================ Tables */
+.mcx-table { width: 100%; border-collapse: collapse; }
+.mcx-table thead th { text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.mcx-table tbody td { padding: 9px 12px; border-bottom: 1px solid var(--hairline); vertical-align: middle; }
+.mcx-table tbody tr:last-child td { border-bottom: none; }
+.mcx-table tbody tr:hover { background: rgba(255,255,255,.012); }
+.mcx-table .ta-r { text-align: right; }
+.mcx-table .ta-c { text-align: center; }
+.mcx-tfoot td { padding: 11px 12px; font-weight: 700; border-top: 1px solid var(--border); }
+.mcx-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+/* ============================================================ Cost-driver bars */
+.mcx-bars { display: flex; flex-direction: column; }
+.mcx-barrow { display: grid; grid-template-columns: 170px 84px 54px 1fr; align-items: center; gap: 14px; padding: 9px 4px; border-bottom: 1px solid var(--hairline); }
+.mcx-barrow:last-child { border-bottom: none; }
+.mcx-barrow .lbl { display: flex; align-items: center; gap: 9px; font-weight: 500; font-size: 13px; }
+.mcx-swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.mcx-bar-track { height: 7px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.mcx-bar-fill { height: 100%; border-radius: 3px; }
+.mcx-amt { font-family: var(--font-plex), monospace; font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; color: var(--ink); }
+.mcx-pct { font-family: var(--font-plex), monospace; font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-3); font-size: 12px; }
+
+/* ============================================================ Chips & severity */
+.mcx-chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 5px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.mcx-chip.is-err { background: var(--err-bg); color: var(--err); box-shadow: inset 0 0 0 1px var(--err-border); }
+.mcx-chip.is-warn { background: var(--warn-bg); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-border); }
+.mcx-chip.is-ok { background: var(--ok-bg); color: var(--ok-2); box-shadow: inset 0 0 0 1px var(--ok-border); }
+.mcx-chip.is-neutral { background: var(--surface-3); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--border); }
+.mcx-chip.is-accent { background: var(--accent-tint); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.mcx-chip button { background: none; border: none; padding: 0; margin: 0 -2px 0 2px; display: inline-flex; cursor: pointer; color: inherit; opacity: .7; }
+.mcx-chip button:hover { opacity: 1; }
+.mcx-sev { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.mcx-sev.is-err { background: var(--err); }
+.mcx-sev.is-warn { background: var(--warn); }
+
+/* ============================================================ Checkbox */
+.mcx-chk {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px;
+  background: var(--surface-2); box-shadow: inset 0 0 0 1.5px var(--border); color: var(--accent);
+  cursor: pointer; border: none; padding: 0;
+}
+.mcx-chk.on { background: var(--accent-tint); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+/* ============================================================ Drag handle */
+.mcx-grip { display: inline-flex; flex-direction: column; gap: 2px; cursor: grab; color: var(--ink-4); }
+.mcx-grip i { display: flex; gap: 2px; }
+.mcx-grip i span { width: 3px; height: 3px; border-radius: 1px; background: currentColor; }
+.mcx tr.dragging { opacity: .4; }
+.mcx tr.drag-before td { box-shadow: inset 0 2px 0 var(--accent); }
+.mcx tr.drag-after td { box-shadow: inset 0 -2px 0 var(--accent); }
+.mcx td.drag-h, .mcx .drag-h { cursor: grab; color: var(--ink-4); width: 26px; text-align: center; }
+
+/* ============================================================ Notes (contenteditable) */
+.mcx-notes { min-height: 92px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--ink); font-size: 13px; line-height: 1.5; }
+.mcx-notes:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,198,228,.16); }
+.mcx-notes:empty::before { content: attr(data-placeholder); color: var(--ink-4); }
+.mcx-notes img { max-width: 100%; display: block; margin: 4px 0; border-radius: 4px; }
+
+/* ============================================================ Autocomplete / selector dropdowns (shared .eq-menu) */
+.mcx .eq-menu, .eq-menu.mcx-menu {
+  background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: var(--shadow-md); max-height: 260px; overflow-y: auto; padding: 4px;
+}
+.mcx .eq-item label, .eq-menu.mcx-menu .eq-item label {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+  cursor: pointer; color: var(--ink-2); font-size: 12.5px;
+}
+.mcx .eq-item label:hover, .eq-menu.mcx-menu .eq-item label:hover { background: var(--raised); color: var(--ink); }
+.mcx tr.cs-row td { opacity: .5; }
+
+/* selector dropdown (EquipmentSelector / LaborRateSelector) */
+.mcx .eq-dd { position: relative; }
+.mcx .eq-inp { height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--ink); font-family: inherit; font-size: 13px; width: 100%; }
+.mcx .eq-inp::placeholder { color: var(--ink-4); }
+.mcx .eq-inp:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,198,228,.16); }
+.mcx .eq-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.mcx .eq-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 4px 0 8px; border-radius: 5px; font-size: 11px; font-weight: 600; background: var(--surface-3); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--border); }
+.mcx .eq-chip-warn { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-border); background: var(--warn-bg); }
+.mcx .eq-chip button { background: none; border: none; color: inherit; cursor: pointer; padding: 0 2px; opacity: .7; }
+.mcx .eq-chip button:hover { opacity: 1; }
+.mcx .eq-cr { padding: 7px 9px; cursor: pointer; color: var(--accent-ink); font-size: 12.5px; font-weight: 600; border-top: 1px solid var(--hairline); }
+.mcx .eq-cr:hover { background: var(--raised); }
+.mcx .eq-sec { padding: 4px 9px 2px; font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; background: var(--surface-2); }
+
+/* ============================================================ Page shell */
+.mcx-page { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.mcx-app { display: flex; flex-direction: column; min-height: 100vh; background: var(--bg); }
+
+/* ============================================================ Misc carry-overs */
+.mcx .empty-msg { color: var(--ink-4); font-size: 13px; padding: 6px 0; }
+
+/* Admin drawer carries bare inputs/selects — give them the dark field look */
+.mcx.drawer-panel input,
+.mcx.drawer-panel select {
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-hanken);
+}
+.mcx.drawer-panel input:focus,
+.mcx.drawer-panel select:focus {
+  outline: none;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}

@@ -56,43 +56,38 @@ function LoginContent() {
     }
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '7px 9px', border: '1px solid #cdd',
-    borderRadius: 3, fontSize: 13, boxSizing: 'border-box',
-  };
+  const labelStyle: React.CSSProperties = { fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' };
 
   return (
-    <div style={{
-      minHeight: '100vh', background: '#eef0f4',
+    <div className="mcx" style={{
+      minHeight: '100vh', background: 'var(--bg)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
-        background: '#fff', borderRadius: 6, boxShadow: '0 2px 12px rgba(0,0,0,.12)',
-        padding: '36px 40px', width: 340,
+        background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-md)', padding: '36px 40px', width: 340,
       }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1a2940', marginBottom: 6 }}>
-          ⚙ Emura
+        <h1 style={{ fontSize: 19, fontWeight: 800, color: 'var(--ink)', marginBottom: 6, letterSpacing: '-.01em' }}>
+          <span style={{ color: 'var(--accent)' }}>⚙</span> Emura
         </h1>
-        <p style={{ fontSize: 12.5, color: '#666', marginBottom: 24 }}>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 24 }}>
           Manufacturing Cost Estimator
         </p>
 
         {confirmed ? (
           <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 14, fontWeight: 600, color: '#166534', marginBottom: 8 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--ok-2)', marginBottom: 8 }}>
               Check your email
             </p>
-            <p style={{ fontSize: 12.5, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
-              We sent a confirmation link to <strong>{email}</strong>.{' '}
+            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 20, lineHeight: 1.5 }}>
+              We sent a confirmation link to <strong style={{ color: 'var(--ink)' }}>{email}</strong>.{' '}
               {isInviteFlow
                 ? 'Click it to confirm your account and join the organization — you\'ll be taken straight into the app.'
                 : 'Click it to activate your account, then sign in below.'}
             </p>
             {!isInviteFlow && (
-              <button
+              <button className="mcx-btn is-primary"
                 onClick={() => { setConfirmed(false); setMode('signin'); }}
-                style={{ padding: '8px 20px', background: '#1a2940', color: '#fff',
-                  border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
               >
                 Go to Sign In
               </button>
@@ -102,47 +97,38 @@ function LoginContent() {
           <>
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
-                  Email
-                </label>
-                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
+                <label style={labelStyle}>Email</label>
+                <input className="mcx-input" style={{ width: '100%' }} type="email" required value={email} onChange={e => setEmail(e.target.value)} />
               </div>
 
               {mode === 'signup' && !isInviteFlow && (
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
-                    Company Name
-                  </label>
-                  <input type="text" required value={company} onChange={e => setCompany(e.target.value)} style={inputStyle} />
+                  <label style={labelStyle}>Company Name</label>
+                  <input className="mcx-input" style={{ width: '100%' }} type="text" required value={company} onChange={e => setCompany(e.target.value)} />
                 </div>
               )}
 
               <div style={{ marginBottom: 20 }}>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 3 }}>
-                  Password
-                </label>
-                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} />
+                <label style={labelStyle}>Password</label>
+                <input className="mcx-input" style={{ width: '100%' }} type="password" required value={password} onChange={e => setPassword(e.target.value)} />
               </div>
 
               {error && (
-                <div style={{ background: '#fff5f5', border: '1px solid #fca5a5', borderRadius: 3,
-                  padding: '7px 10px', fontSize: 12, color: '#991b1b', marginBottom: 14 }}>
+                <div style={{ background: 'var(--err-bg)', border: '1px solid var(--err-border)', borderRadius: 6,
+                  padding: '7px 10px', fontSize: 12, color: 'var(--err)', marginBottom: 14 }}>
                   {error}
                 </div>
               )}
 
-              <button type="submit" disabled={loading} style={{
-                width: '100%', padding: '9px', background: '#1a2940', color: '#fff',
-                border: 'none', borderRadius: 3, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}>
+              <button type="submit" className="mcx-btn is-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
                 {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
               </button>
             </form>
 
-            <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: '#666' }}>
+            <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: 'var(--ink-3)' }}>
               {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
               <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}
-                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                style={{ background: 'none', border: 'none', color: 'var(--accent-ink)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                 {mode === 'signin' ? 'Create one' : 'Sign in'}
               </button>
             </p>

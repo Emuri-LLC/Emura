@@ -83,10 +83,18 @@ per volume break.
 ## Key file locations
 
 ### App entry
-- `emura-app/app/page.tsx` — root component; owns AppState, history, resetKey; has Logout button
-- `emura-app/app/layout.tsx` — sets metadata and loads globals.css (no scripts)
-- `emura-app/app/globals.css` — all CSS (migrated from index.html)
-- `emura-app/app/login/page.tsx` — login/signup page; handles both modes with toggle link
+- `emura-app/app/page.tsx` — root component; owns AppState, history, resetKey; renders the `UtilBar` + `RibbonStepper` shell (editor) or `UtilBar` + `QuotesList` (list); app root is `<div id="app" className="mcx mcx-app">`
+- `emura-app/app/layout.tsx` — sets metadata; loads `globals.css` **and** `mcx.css`; self-hosts Hanken Grotesk + IBM Plex Mono via `next/font/google`, exposed as `--font-hanken` / `--font-plex`
+- `emura-app/app/login/page.tsx` — login/signup page (dark `.mcx`); handles both modes with toggle link
+
+### Design system — "Stepline" dark theme (`.mcx`)
+The whole app runs on a **dark-only** design system scoped under the `.mcx` class. (The previous
+light theme was retired; a future light theme should be a `.mcx.theme-light` token override, not a
+revival of the old chrome.)
+- `emura-app/app/mcx.css` — all design tokens (cool-slate dark, ice-cyan accent `--accent:#2bc6e4`; green reserved for "complete" status) + every `.mcx-*` component rule (cards, tables, inputs, ribbon, util bar, notes, bars, chips). Also overrides the `.eq-*` selector dropdowns and drag rows for dark.
+- `emura-app/app/globals.css` — now **minimal**: CSS reset, dark page background, and the few non-`.mcx` survivors (`.ii` InfoIcon tooltip, `.qdot*` status dots, `.drawer-*` shell). **Specificity note:** the old bare-tag `input[type=text]`/`select`/`table` rules were removed because they out-specified the `.mcx-*` classes (e.g. `input[type=text]` (0,1,1) beat `.mcx-input` (0,1,0)) — do not reintroduce bare-tag form/table rules.
+- `emura-app/components/mcx/` — shared kit: `Icon.tsx` (inline SVG set), `NumX.tsx` (numeric input w/ steppers + affix, `defaultValue`+`onBlur`, key with `…+resetKey`), `SectionCard.tsx` (titled card + optional `+ Action` header button), `primitives.tsx` (`Chip`/`Note`/`Grip`/`Chk`/`BarX`/`HelpI`/`CAT_COLOR`), `UtilBar.tsx` (two-mode header), `RibbonStepper.tsx` (8-node tab nav + live per-tab health + Annual Cost), `AnnualCost.tsx`.
+- `emura-app/lib/tabStatus.ts` — `computeTabStatuses(state)` → 8 `{status,count}` entries (`ok|err|warn|idle`) aligned to `TABS`, driving the ribbon. Reuses `computeQuoteWarnings`; memoized in `page.tsx`. **Adaptive Annual Cost** headline (`computeHeadline` in `page.tsx`): primary FG set → per-unit via `calcCosts`; else aggregate annual via `computeCostDrivers`.
 
 ### Auth & routing
 - `emura-app/proxy.ts` — Next.js 16 auth gate; `/join` bypassed so unauthenticated users can accept invites
@@ -423,49 +431,52 @@ require live email or manual Supabase dashboard access.
 
 ### Writing the test script
 
+> ⚠️ **2026-06 redesign — "Stepline" dark theme (`.mcx`).** The UI was rebuilt on a dark design
+> system scoped under the `.mcx` class (`app/mcx.css`). The old light chrome (`header`, `nav`,
+> `.tab-btn`, `.card`, `.btn*`, `.stbl`, bare `table/input/select` rules) was **retired** from
+> `globals.css`. Tab navigation is now the **"Stepline" ribbon** (`RibbonStepper`), header controls
+> live in the **utility bar** (`UtilBar` → `.mcx-util`), and most action buttons are icon+label
+> (`.mcx-btn`) where the icon is an inline **SVG** — so several controls can no longer be matched by
+> their old text/✕ glyph. The selector table below is updated to the new markup.
+
 When generating `index.mjs`, use the **exact UI selectors** from the source. The ones that bit us:
 
 | Element | Correct selector |
 |---------|-----------------|
-| Tab buttons | `button.tab-btn` — text labels are `'Quote Info'`, `'Finished Goods'`, `'Bill of Materials'`, `'Material Costs'`, `'Equipment'`, `'Operations'`, `'Summary'` |
-| Back to list | `button` with text `'← Quotes'` |
-| Settings/admin | `button[title="Settings"]` (renders `⚙`) |
-| Undo | `button.btn-undo` |
-| Export | `button` with text `'Export'` |
-| Import | `label.btn` with text `'Import'` — it is a `<label>`, NOT a `<button>`; set files via `label input[type="file"]` |
-| Delete (any row) | `button.btn-del` with text `✕` |
-| Add Break | `button` with text `'+ Add Break'` (on Finished Goods tab, not Quote Info) |
-| Add FG | `button` with text `'+ Add FG'` |
-| Add Common BOM | `button` with text `'+ Add Common'` |
-| Add FG-Specific BOM | `button` with text `'+ Add FG-Specific'` |
-| Add Direct Op | `button` with text `'+ Add Operation'` |
-| Add Indirect Op | `button` with text `'+ Add Category'` |
-| Add Subcontract | `button` with text `'+ Add Subcontract'` |
-| Add Equipment | `button` with text `'+ Add Equipment'` |
-| Admin drawer panel | `.drawer-panel` |
+| Tab buttons (ribbon) | `button.mcx-step-item` — navigate by clicking; `title` = exact label `'Quote Info'`, `'Finished Goods'`, `'Bill of Materials'`, `'Material Costs'`, `'Equipment'`, `'Operations'`, `'Summary'`, `'Mfg Summary'`. The visible `.mcx-step-label` carries the same text. (No more `button.tab-btn`.) |
+| Back to list | `button.mcx-back` (`title="Back to quotes list"`, text contains `'Quotes'`) |
+| Settings/admin | `button[title="Settings"]` (renders a gear SVG; admin only) |
+| Undo / Redo | `button[title^="Undo"]` / `button[title^="Redo"]` (was `button.btn-undo`; now `.mcx-btn.is-icon`) |
+| Export | `button.mcx-btn` with text `'Export'` |
+| Import | `label.mcx-btn` with text `'Import'` — still a `<label>`, NOT a `<button>`; set files via `label input[type="file"]` |
+| Save Revision | `button.mcx-btn.is-primary` with text `'Save Revision'` (editor utility bar; `⌘S` also triggers it) |
+| Delete (any row) | `button.mcx-btn.is-icon` whose only child is an **X SVG** (no `✕` text) — match by row position, not text; it is the last cell's button |
+| Add buttons (header actions) | `button.mcx-btn.is-primary` rendered by `SectionCard` — text is the label **without** a `+` prefix (the `+` is an SVG icon): `'Add Break'`, `'Add FG'`, `'Add Common'`, `'Add FG-Specific'`, `'Add Operation'`, `'Add Category'`, `'Add Subcontract'`, `'Add Equipment'` |
+| Admin drawer panel | `.drawer-panel` (now also carries `.mcx`) |
 | Admin drawer tabs | `button` with text `'Organization'`, `'Sites & Depts'`, `'Users'` |
 | Close drawer | `button` with text `'×'` inside `.drawer-panel` |
-| Org name input | `input` (no explicit type attribute — `input[type="text"]` won't match) |
-| Quote Review card | `.card-hdr` containing text `'Quote Review'` |
-| Update All button | `button` with text `'← Update All from Library'` (in Quote Review card header) |
-| Per-row Update button | `button` with text `'← Use Library'` (one per finding row) |
-| Cost Drivers card | `.card-hdr` containing text `'Top Cost Drivers'`; "Show all" toggle is `button` with text starting `'Show all'` |
-| Primary FG / Break | two `select`s on the Finished Goods tab (labels "SKU" / "Break") |
-| Std checkbox (BOM) | checkbox in the "Std" column header (`title` "Standard material…") |
-| Compare revisions | `button` with text `'Compare'` (header, only when a quote is open) — modal is a fixed overlay with two `select`s (From/To) |
-| Content search | `input[placeholder="Search within quotes…"]` + `button` with text `'Search'`; `'Clear'` button appears when active |
+| Org name input | `.drawer-panel input` (first input; now `.mcx`-styled, still no `type` attribute) |
+| Quote Review card | `.mcx-card-head` containing text `'Quote Review'` (title text is in `.mcx-card-title`) |
+| Update All button | `button.mcx-btn` with text containing `'Update All from Library'` (Quote Review header) |
+| Per-row Update button | `button` with text containing `'Use Library'` (or `'Update Library'` for locked rows) |
+| Cost Drivers card | `.mcx-card-head` containing text `'Top Cost Drivers'`; "Show all" toggle is `button` with text starting `'Show all'` |
+| Primary FG / Break | two `select.mcx-input` on the Finished Goods tab (Volume Breaks / Finished Goods cards) |
+| Std checkbox (BOM) | now a `button.mcx-chk` (NOT a native checkbox) with `title` starting `'Standard material'` |
+| Compare revisions | `button.mcx-btn` with text `'Compare'` (editor utility bar) — modal is a fixed `.mcx` overlay with two `select.mcx-input` (From/To) |
+| Content search | `input[placeholder="Search within quotes…"]` + `button.mcx-btn` with text `'Search'`; `'Clear'` button appears when active |
 | Est. $/unit column | header `th` text `'Est. $/unit'` in QuotesList; value is monospace `$x.xx` or `—` |
-| Save status | `#save-status` |
-| Quote Info inputs | `div.fgrp input[type="text"]` — no placeholder or id; first is Name, second Customer, fourth Revision |
-| Notes area | `div.notes-editable` (contenteditable div, not a textarea) |
-| Qty inputs (BOM) | `defaultValue + onBlur` pattern — read value only after navigating away and back to force remount |
-| App container | `#app` |
+| Annual Cost readout | `.mcx-annual` (right edge of the ribbon) — adaptive: per-unit when a primary FG is set, else aggregate annual |
+| Save status | `#save-status` — still present as a **hidden** (`display:none`) mirror span for QA/back-compat; the visible state lives in `UtilBar` |
+| Quote Info inputs | `.mcx-input` text inputs in the left rail (Quote Information card) — no placeholder/id; first is Name, second Customer (Revision is in the same card). (`div.fgrp` retired.) |
+| Notes area | `div.mcx-notes` (contenteditable div, not a textarea) |
+| Qty inputs (BOM) | `input.mcx-input.is-num` — `defaultValue + onBlur`; read value only after navigating away and back to force remount |
+| App container | `#app.mcx` (the `mcx` class enables the dark design system) |
 
 Key structural facts:
 - **Volume Breaks live on the Finished Goods tab**, not Quote Info (despite checklist section 4 listing them).
 - The app renders `null` during bootstrap (`!loaded`). Always `waitForSelector('#app')` after login, not just a fixed delay.
 - After logout, `proxy.ts` immediately redirects any authenticated `/login` visit to `/`. Check `page.url()` after `goto('/login')` and logout first if not on the login page.
-- The `+ New Quote` button appears in **both** the header and inside `QuotesList`. Use `.first()` or target by parent to avoid strict-mode violations.
+- The **New Quote** button appears in **both** the utility bar (`UtilBar`, text `'New Quote'`, no `+` glyph — the `+` is an SVG icon) and inside `QuotesList` (also `'New Quote'`). Use `.first()` or target by parent to avoid strict-mode violations.
 
 ### What we learned from the first QA run (2026-05-21)
 
@@ -504,8 +515,9 @@ Key structural facts:
 When you add a new feature, update the test script to cover it:
 
 1. **New tab or tab rename** — Update the `TABS` check and add a section function mirroring the
-   pattern of existing sections. The tab button selector is always `button.tab-btn` with the exact
-   label string from `page.tsx`'s `TABS` array.
+   pattern of existing sections. The tab is now a **ribbon node** — select it with
+   `button.mcx-step-item` and match the exact `title`/label string from `page.tsx`'s `TABS` array
+   (e.g. `page.click('button.mcx-step-item[title="Operations"]')`).
 
 2. **New field in `AppState`** — Add it to `migrateState()` with an explicit null guard:
    ```js

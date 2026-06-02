@@ -168,9 +168,9 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
       onClick={() => setTab(id)}
       style={{
         flex: 1, padding: '8px 0', fontSize: 12.5, fontWeight: tab === id ? 700 : 400,
-        background: tab === id ? '#fff' : 'transparent',
-        border: 'none', borderBottom: tab === id ? '2px solid #3b82f6' : '2px solid transparent',
-        cursor: 'pointer', color: tab === id ? '#1a2940' : '#666',
+        background: tab === id ? 'var(--surface)' : 'transparent',
+        border: 'none', borderBottom: tab === id ? '2px solid var(--accent)' : '2px solid transparent',
+        cursor: 'pointer', color: tab === id ? 'var(--ink)' : 'var(--ink-3)',
       }}
     >{label}</button>
   );
@@ -181,14 +181,14 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
       <div className="drawer-backdrop" onClick={onClose} />
 
       {/* Drawer panel */}
-      <div className="drawer-panel">
+      <div className="mcx drawer-panel" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px 0' }}>
-          <span style={{ fontWeight: 700, fontSize: 14, color: '#1a2940' }}>Settings</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888' }}>×</button>
+          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>Settings</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--ink-4)' }}>×</button>
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginTop: 10 }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginTop: 10 }}>
           {tabBtn('org',   'Organization')}
           {tabBtn('sites', 'Sites & Depts')}
           {tabBtn('users', 'Users')}
@@ -199,16 +199,16 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
           {/* ── Org tab ── */}
           {tab === 'org' && (
             <div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: '#444', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>
                 Organization Name
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   value={orgName}
                   onChange={e => setOrgName(e.target.value)}
-                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+                  style={{ flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 13 }}
                 />
-                <button className="btn btn-neu btn-sm" onClick={handleSaveOrgName} disabled={savingOrg}>
+                <button className="mcx-btn is-sm is-quiet" onClick={handleSaveOrgName} disabled={savingOrg}>
                   {savingOrg ? 'Saving…' : 'Save'}
                 </button>
               </div>
@@ -218,7 +218,7 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
           {/* ── Sites & Depts tab ── */}
           {tab === 'sites' && (
             <div>
-              {!sitesLoaded && <p style={{ fontSize: 12, color: '#888' }}>Loading…</p>}
+              {!sitesLoaded && <p style={{ fontSize: 12, color: 'var(--ink-4)' }}>Loading…</p>}
 
               {sites.map(site => (
                 <SiteRow
@@ -238,9 +238,9 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
                   value={newSiteName}
                   onChange={e => setNewSiteName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAddSite()}
-                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+                  style={{ flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 13 }}
                 />
-                <button className="btn btn-add btn-sm" onClick={handleAddSite}>+ Site</button>
+                <button className="mcx-btn is-sm is-primary" onClick={handleAddSite}>+ Site</button>
               </div>
             </div>
           )}
@@ -248,7 +248,7 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
           {/* ── Users tab ── */}
           {tab === 'users' && (
             <div>
-              {!membersLoaded && <p style={{ fontSize: 12, color: '#888' }}>Loading…</p>}
+              {!membersLoaded && <p style={{ fontSize: 12, color: 'var(--ink-4)' }}>Loading…</p>}
 
               {members.map(m => (
                 <MemberRow
@@ -262,18 +262,18 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
               ))}
 
               {/* Invite section */}
-              <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 10 }}>Generate Invite Link</p>
+              <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 10 }}>Generate Invite Link</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <input
                     type="email" placeholder="Email address…"
                     value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                    style={{ padding: '6px 8px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+                    style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 13 }}
                   />
                   <div style={{ display: 'flex', gap: 8 }}>
                     <select
                       value={inviteRole} onChange={e => setInviteRole(e.target.value as OrgMember['role'])}
-                      style={{ flex: 1, padding: '6px 8px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+                      style={{ flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 13 }}
                     >
                       <option value="estimator">Estimator</option>
                       <option value="viewer">Viewer</option>
@@ -281,7 +281,7 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
                     </select>
                     <select
                       value={inviteDept} onChange={e => setInviteDept(e.target.value)}
-                      style={{ flex: 1, padding: '6px 8px', border: '1px solid #cdd', borderRadius: 3, fontSize: 13 }}
+                      style={{ flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 13 }}
                     >
                       <option value="">No dept</option>
                       {allDepts.map(d => (
@@ -290,7 +290,7 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
                     </select>
                   </div>
                   <button
-                    className="btn btn-neu btn-sm"
+                    className="mcx-btn is-sm is-quiet"
                     onClick={handleGenerateInvite}
                     disabled={inviteLoading || !inviteEmail.trim()}
                   >
@@ -299,17 +299,17 @@ export default function AdminDrawer({ open, onClose, orgCtx, onOrgRenamed, curre
                 </div>
 
                 {inviteLink && (
-                  <div style={{ marginTop: 10, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  <div style={{ marginTop: 10, background: 'var(--ok-bg)', border: '1px solid var(--ok-border)',
                     borderRadius: 3, padding: '8px 10px', fontSize: 11.5 }}>
-                    <p style={{ marginBottom: 4, fontWeight: 600, color: '#166534' }}>Invite link (expires in 7 days):</p>
+                    <p style={{ marginBottom: 4, fontWeight: 600, color: 'var(--ok-2)' }}>Invite link (expires in 7 days):</p>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <input
                         readOnly value={inviteLink}
-                        style={{ flex: 1, fontSize: 11, padding: '4px 6px', border: '1px solid #cdd', borderRadius: 2 }}
+                        style={{ flex: 1, fontSize: 11, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 2 }}
                         onClick={e => (e.target as HTMLInputElement).select()}
                       />
                       <button
-                        className="btn btn-neu btn-sm"
+                        className="mcx-btn is-sm is-quiet"
                         onClick={() => navigator.clipboard.writeText(inviteLink)}
                       >Copy</button>
                     </div>
@@ -345,22 +345,22 @@ function SiteRow({ site, onRename, onDelete, onAddDept, onRenameDept, onDeleteDe
   }
 
   return (
-    <div style={{ marginBottom: 14, border: '1px solid #e2e8f0', borderRadius: 4 }}>
+    <div style={{ marginBottom: 14, border: '1px solid var(--border)', borderRadius: 4 }}>
       {/* Site header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', background: '#f8fafc', borderRadius: '4px 4px 0 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', background: 'var(--surface-2)', borderRadius: '4px 4px 0 0' }}>
         {editing ? (
           <input
             autoFocus value={name}
             onChange={e => setName(e.target.value)}
             onBlur={commitRename}
             onKeyDown={e => e.key === 'Enter' && commitRename()}
-            style={{ flex: 1, padding: '3px 6px', border: '1px solid #93c5fd', borderRadius: 2, fontSize: 13 }}
+            style={{ flex: 1, padding: '3px 6px', border: '1px solid var(--accent-border)', borderRadius: 2, fontSize: 13 }}
           />
         ) : (
           <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }} onDoubleClick={() => setEditing(true)}>{site.name}</span>
         )}
-        <button className="btn btn-neu btn-sm" onClick={() => setEditing(true)} style={{ fontSize: 11 }}>✎</button>
-        <button className="btn btn-del btn-sm" onClick={onDelete} style={{ fontSize: 11 }}>✕</button>
+        <button className="mcx-btn is-sm is-quiet" onClick={() => setEditing(true)} style={{ fontSize: 11 }}>✎</button>
+        <button className="mcx-btn is-sm is-quiet" onClick={onDelete} style={{ fontSize: 11 }}>✕</button>
       </div>
 
       {/* Departments */}
@@ -378,9 +378,9 @@ function SiteRow({ site, onRename, onDelete, onAddDept, onRenameDept, onDeleteDe
             value={newDeptName}
             onChange={e => setNewDeptName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { onAddDept(newDeptName); setNewDeptName(''); } }}
-            style={{ flex: 1, padding: '4px 7px', border: '1px solid #cdd', borderRadius: 3, fontSize: 12 }}
+            style={{ flex: 1, padding: '4px 7px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 12 }}
           />
-          <button className="btn btn-add btn-sm"
+          <button className="mcx-btn is-sm is-primary"
             onClick={() => { onAddDept(newDeptName); setNewDeptName(''); }}
             style={{ fontSize: 11 }}>+ Dept</button>
         </div>
@@ -404,20 +404,20 @@ function DeptRow({ dept, onRename, onDelete }: {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', marginLeft: 12 }}>
-      <span style={{ color: '#aaa', fontSize: 11 }}>└</span>
+      <span style={{ color: 'var(--ink-4)', fontSize: 11 }}>└</span>
       {editing ? (
         <input
           autoFocus value={name}
           onChange={e => setName(e.target.value)}
           onBlur={commit}
           onKeyDown={e => e.key === 'Enter' && commit()}
-          style={{ flex: 1, padding: '2px 5px', border: '1px solid #93c5fd', borderRadius: 2, fontSize: 12 }}
+          style={{ flex: 1, padding: '2px 5px', border: '1px solid var(--accent-border)', borderRadius: 2, fontSize: 12 }}
         />
       ) : (
         <span style={{ flex: 1, fontSize: 12 }} onDoubleClick={() => setEditing(true)}>{dept.name}</span>
       )}
-      <button className="btn btn-neu btn-sm" onClick={() => setEditing(true)} style={{ fontSize: 10, padding: '1px 5px' }}>✎</button>
-      <button className="btn btn-del btn-sm" onClick={onDelete} style={{ fontSize: 10, padding: '1px 5px' }}>✕</button>
+      <button className="mcx-btn is-sm is-quiet" onClick={() => setEditing(true)} style={{ fontSize: 10, padding: '1px 5px' }}>✎</button>
+      <button className="mcx-btn is-sm is-quiet" onClick={onDelete} style={{ fontSize: 10, padding: '1px 5px' }}>✕</button>
     </div>
   );
 }
@@ -434,21 +434,21 @@ function MemberRow({ member, allDepts, currentUserId, onUpdate, onRemove }: {
 
   if (isMe) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f2f5', fontSize: 12.5 }}>
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#555' }} title={display}>{display}</span>
-        <span style={{ fontSize: 11.5, color: '#666' }}>{member.role}</span>
-        <span style={{ fontSize: 11, background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>you</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--hairline)', fontSize: 12.5 }}>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }} title={display}>{display}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{member.role}</span>
+        <span style={{ fontSize: 11, background: 'var(--accent-tint)', color: 'var(--accent)', border: '1px solid var(--accent-border)', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>you</span>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f0f2f5', fontSize: 12.5 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--hairline)', fontSize: 12.5 }}>
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={display}>{display}</span>
       <select
         value={member.role}
         onChange={e => onUpdate(e.target.value as OrgMember['role'], member.departmentId)}
-        style={{ padding: '3px 5px', border: '1px solid #cdd', borderRadius: 3, fontSize: 12 }}
+        style={{ padding: '3px 5px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 12 }}
       >
         <option value="admin">Admin</option>
         <option value="estimator">Estimator</option>
@@ -457,14 +457,14 @@ function MemberRow({ member, allDepts, currentUserId, onUpdate, onRemove }: {
       <select
         value={member.departmentId ?? ''}
         onChange={e => onUpdate(member.role, e.target.value || null)}
-        style={{ padding: '3px 5px', border: '1px solid #cdd', borderRadius: 3, fontSize: 12 }}
+        style={{ padding: '3px 5px', border: '1px solid var(--border)', borderRadius: 3, fontSize: 12 }}
       >
         <option value="">No dept</option>
         {allDepts.map(d => (
           <option key={d.id} value={d.id}>{d.siteName} / {d.name}</option>
         ))}
       </select>
-      <button className="btn btn-del btn-sm" onClick={onRemove} style={{ fontSize: 11, padding: '2px 6px' }}>Remove</button>
+      <button className="mcx-btn is-sm is-quiet" onClick={onRemove} style={{ fontSize: 11, padding: '2px 6px' }}>Remove</button>
     </div>
   );
 }

@@ -48,55 +48,49 @@ function JoinContent() {
 
   const center: React.CSSProperties = {
     minHeight: '100vh', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', background: '#eef0f4',
+    justifyContent: 'center', background: 'var(--bg)',
   };
   const card: React.CSSProperties = {
-    background: '#fff', borderRadius: 6, boxShadow: '0 2px 12px rgba(0,0,0,.12)',
-    padding: '36px 40px', width: 340, textAlign: 'center',
+    background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-md)', padding: '36px 40px', width: 340, textAlign: 'center',
   };
 
   return (
-    <div style={center}>
+    <div className="mcx" style={center}>
       <div style={card}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#1a2940', marginBottom: 16 }}>⚙ Emura</h1>
+        <h1 style={{ fontSize: 19, fontWeight: 800, color: 'var(--ink)', marginBottom: 16, letterSpacing: '-.01em' }}>
+          <span style={{ color: 'var(--accent)' }}>⚙</span> Emura
+        </h1>
 
         {(status === 'checking' || status === 'accepting') && (
-          <p style={{ color: '#555', fontSize: 13 }}>
+          <p style={{ color: 'var(--ink-3)', fontSize: 13 }}>
             {status === 'checking' ? 'Verifying invite…' : 'Joining organization…'}
           </p>
         )}
 
         {status === 'success' && (
           <div>
-            <p style={{ color: '#166534', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
+            <p style={{ color: 'var(--ok-2)', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
               You've joined the organization!
             </p>
-            <p style={{ color: '#888', fontSize: 12 }}>Redirecting you to the app…</p>
+            <p style={{ color: 'var(--ink-4)', fontSize: 12 }}>Redirecting you to the app…</p>
           </div>
         )}
 
         {status === 'error' && (
           <div>
-            <p style={{ color: '#991b1b', fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
+            <p style={{ color: 'var(--err)', fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
               Invite failed
             </p>
-            <p style={{ color: '#555', fontSize: 12, marginBottom: 8 }}>{message}</p>
-            <p style={{ color: '#888', fontSize: 11, marginBottom: 16, lineHeight: 1.5 }}>
+            <p style={{ color: 'var(--ink-3)', fontSize: 12, marginBottom: 8 }}>{message}</p>
+            <p style={{ color: 'var(--ink-4)', fontSize: 11, marginBottom: 16, lineHeight: 1.5 }}>
               Make sure you're signed in with the exact email address this invite was sent to. If you're signed in as someone else, sign out first.
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <button
-                onClick={handleSignOut}
-                style={{ padding: '8px 16px', background: '#fff', color: '#1a2940',
-                  border: '1px solid #1a2940', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
-              >
+              <button className="mcx-btn is-quiet" onClick={handleSignOut}>
                 Sign Out
               </button>
-              <button
-                onClick={() => router.push('/')}
-                style={{ padding: '8px 16px', background: '#1a2940', color: '#fff',
-                  border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
-              >
+              <button className="mcx-btn is-primary" onClick={() => router.push('/')}>
                 Go to App
               </button>
             </div>

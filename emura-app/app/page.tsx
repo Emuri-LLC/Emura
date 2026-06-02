@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { saveState, defaultState, migrateState, STORE_KEY } from '@/lib/state';
 import type { AppState, LibraryPart, LibraryEquipment, LibraryLaborRate, ReviewItem } from '@/lib/calculations';
+import { resolvePrimaryIndices, calcCosts, computeCostDrivers, totalAnnualUnits } from '@/lib/calculations';
+import { computeTabStatuses } from '@/lib/tabStatus';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
 import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, searchQuotes, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
@@ -22,6 +24,8 @@ import QuotesList        from '@/components/QuotesList';
 import AdminDrawer       from '@/components/AdminDrawer';
 import RevisionCompare   from '@/components/RevisionCompare';
 import TabErrorBoundary  from '@/components/TabErrorBoundary';
+import UtilBar           from '@/components/mcx/UtilBar';
+import RibbonStepper     from '@/components/mcx/RibbonStepper';
 
 const TABS = [
   { id: 'info',       label: 'Quote Info'        },
@@ -33,6 +37,42 @@ const TABS = [
   { id: 'summary',    label: 'Summary'           },
   { id: 'mfgsummary', label: 'Mfg Summary'       },
 ];
+
+// Highest-volume break (fallback "lens" when no primary break is set).
+function highestVolBreak(state: AppState): number {
+  let idx = 0, best = -1;
+  state.breaks.forEach((_, j) => {
+    const u = totalAnnualUnits(state, j);
+    if (u > best) { best = u; idx = j; }
+  });
+  return idx;
+}
+
+// Adaptive headline for the ribbon's Annual Cost read-out:
+//   primary FG selected → per-unit cost; otherwise → aggregate annual cost.
+function computeHeadline(state: AppState): { eyebrow: string; figure: string; unitSuffix?: string } {
+  const { fgi, bki } = resolvePrimaryIndices(state);
+  const fb = highestVolBreak(state);
+  if (fgi >= 0) {
+    const useBki = bki >= 0 ? bki : fb;
+    const c = calcCosts(state, fgi, useBki);
+    const perUnit = c ? c.total : 0;
+    const fgName = state.finishedGoods[fgi]?.name?.trim() || 'FG';
+    const brk = state.breaks[useBki]?.label?.trim();
+    return {
+      eyebrow: `$/Unit · ${fgName}${brk ? ' · ' + brk : ''}`,
+      figure: perUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      unitSuffix: '/unit',
+    };
+  }
+  const drivers = computeCostDrivers(state, fb);
+  const total = drivers ? drivers.totalAnnual : 0;
+  const brk = state.breaks[fb]?.label?.trim();
+  return {
+    eyebrow: `Annual Cost${brk ? ' · ' + brk : ''}`,
+    figure: Math.round(total).toLocaleString(),
+  };
+}
 
 export default function Home() {
   const [appState, setAppState]       = useState<AppState | null>(null);
@@ -349,6 +389,27 @@ export default function Home() {
     window.location.href = '/login';
   }
 
+  // ── Derived header data (live, synchronous) ──────────────────
+
+  const tabStatuses = useMemo(() => appState ? computeTabStatuses(appState) : [], [appState]);
+  const headline    = useMemo(() => appState ? computeHeadline(appState) : { eyebrow: '', figure: '0' }, [appState]);
+
+  // Keyboard shortcuts: ⌘S save revision, ⌘Z / ⌘⇧Z undo/redo (app-level only
+  // when not editing a text field, so native input undo still works).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || !quoteId || !appState) return;
+      const k = e.key.toLowerCase();
+      const el = document.activeElement as HTMLElement | null;
+      const editing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (k === 's') { e.preventDefault(); handleSaveRevision(); }
+      else if (k === 'z' && !editing) { e.preventDefault(); if (e.shiftKey) handleRedo(); else handleUndo(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteId, appState, history, future]);
+
   // ── Render ───────────────────────────────────────────────────
 
   // Still bootstrapping — show nothing to avoid any flash
@@ -357,16 +418,13 @@ export default function Home() {
   // No org row found — trigger didn't fire or user confirmed email before trigger was created
   if (orgCtx === null) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#eef0f4', gap: 12 }}>
-        <p style={{ color: '#555', fontSize: 14 }}>No organization found for your account.</p>
-        <p style={{ color: '#888', fontSize: 12, maxWidth: 320, textAlign: 'center' }}>
+      <div className="mcx" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', gap: 12 }}>
+        <p style={{ color: 'var(--ink-2)', fontSize: 14 }}>No organization found for your account.</p>
+        <p style={{ color: 'var(--ink-4)', fontSize: 12, maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
           This can happen if your account was created before the setup was complete.
           Please sign out and create a new account, or contact your administrator.
         </p>
-        <button
-          onClick={handleLogout}
-          style={{ padding: '8px 20px', background: '#1a2940', color: '#fff', border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
-        >
+        <button className="mcx-btn is-primary" onClick={handleLogout}>
           Sign Out
         </button>
       </div>
@@ -394,97 +452,71 @@ export default function Home() {
     }
   }
 
+  const tabIndex = TABS.findIndex(t => t.id === currentTab);
+
   return (
-    <div id="app">
-      <header>
-        <h1>
-          {quoteId && (
-            <button
-              onClick={handleBackToList}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6',
-                fontSize: 13, fontWeight: 600, marginRight: 10, padding: 0 }}
-              title="Back to quotes list"
-            >
-              ← Quotes
-            </button>
-          )}
-          &#9883; Manufacturing Cost Estimator
-        </h1>
-        <div className="hdr-r">
-          <span id="save-status">{quoteId ? saveStatus : ''}</span>
-
-          {orgCtx.role === 'admin' && (
-            <button className="btn btn-neu btn-sm" onClick={() => setAdminOpen(true)} title="Settings">⚙</button>
-          )}
-
-          <button className="btn btn-neu btn-sm" onClick={handleLogout}>Logout</button>
-
-          {quoteId && appState && (
-            <>
-              {canEdit && (
-                <button className="btn btn-add btn-sm" onClick={handleSaveRevision}>
-                  Save Revision
-                </button>
-              )}
-              <button className="btn btn-neu btn-sm" onClick={() => setCompareOpen(true)}>
-                Compare
-              </button>
-              <button className="btn btn-undo btn-sm"
-                onClick={handleUndo} disabled={history.length === 0}>
-                &#8630; Undo
-              </button>
-              <button className="btn btn-redo btn-sm"
-                onClick={handleRedo} disabled={future.length === 0}>
-                Redo &#8631;
-              </button>
-              <button className="btn btn-neu btn-sm" onClick={handleExport}>Export</button>
-              <label className="btn btn-neu btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
-                Import
-                <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
-              </label>
-            </>
-          )}
-
-          {!quoteId && canEdit && (
-            <button className="btn btn-add btn-sm" onClick={handleNew}>+ New Quote</button>
-          )}
-        </div>
-      </header>
-
-      {/* Quote list view */}
-      {!quoteId && (
-        <main style={{ padding: '14px 16px', flex: 1, overflowX: 'auto' }}>
-          <QuotesList
-            quotes={quotes}
-            userId={userId}
-            role={orgCtx.role}
-            emailMap={emailMap}
-            onOpen={handleOpenQuote}
-            onNew={handleNew}
-            onDelete={handleDeleteQuote}
-            statusCache={statusCache}
-            onVisibleIdsChange={handleVisibleIdsChange}
-            contentMatchIds={contentMatchIds}
-            contentSearching={contentSearching}
-            onContentSearch={handleContentSearch}
-          />
-        </main>
-      )}
-
-      {/* Quote editor view */}
-      {quoteId && appState && (
+    <div id="app" className="mcx mcx-app">
+      {quoteId && appState ? (
+        /* ── Quote editor view ── */
         <>
-          <nav id="tabs">
-            {TABS.map(tab => (
-              <button key={tab.id}
-                className={`tab-btn${currentTab === tab.id ? ' active' : ''}`}
-                onClick={() => setCurrentTab(tab.id)}>
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-          <main style={{ padding: '14px 16px', flex: 1, overflowX: 'auto' }}>
+          <UtilBar
+            mode="editor"
+            quoteName={appState.quote.name}
+            revision={appState.quote.revision}
+            saveStatus={saveStatus}
+            isAdmin={orgCtx.role === 'admin'}
+            canEdit={canEdit}
+            canUndo={history.length > 0}
+            canRedo={future.length > 0}
+            onBack={handleBackToList}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onCompare={() => setCompareOpen(true)}
+            onExport={handleExport}
+            onImport={handleImport}
+            onSaveRevision={handleSaveRevision}
+            onSettings={() => setAdminOpen(true)}
+            onLogout={handleLogout}
+          />
+          <RibbonStepper
+            tabs={TABS}
+            statuses={tabStatuses}
+            current={tabIndex < 0 ? 0 : tabIndex}
+            onNavigate={i => setCurrentTab(TABS[i].id)}
+            annual={headline}
+          />
+          {/* hidden mirror of save status for QA/back-compat */}
+          <span id="save-status" style={{ display: 'none' }}>{saveStatus}</span>
+          <main className="mcx-page" style={{ flex: 1, overflowX: 'auto' }}>
             {renderTab()}
+          </main>
+        </>
+      ) : (
+        /* ── Quote list view ── */
+        <>
+          <UtilBar
+            mode="list"
+            isAdmin={orgCtx.role === 'admin'}
+            canEdit={canEdit}
+            onNew={handleNew}
+            onSettings={() => setAdminOpen(true)}
+            onLogout={handleLogout}
+          />
+          <main className="mcx-page" style={{ flex: 1, overflowX: 'auto' }}>
+            <QuotesList
+              quotes={quotes}
+              userId={userId}
+              role={orgCtx.role}
+              emailMap={emailMap}
+              onOpen={handleOpenQuote}
+              onNew={handleNew}
+              onDelete={handleDeleteQuote}
+              statusCache={statusCache}
+              onVisibleIdsChange={handleVisibleIdsChange}
+              contentMatchIds={contentMatchIds}
+              contentSearching={contentSearching}
+              onContentSearch={handleContentSearch}
+            />
           </main>
         </>
       )}

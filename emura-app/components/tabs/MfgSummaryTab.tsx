@@ -1,5 +1,7 @@
 'use client';
 
+import SectionCard from '@/components/mcx/SectionCard';
+import { Note } from '@/components/mcx/primitives';
 import type { AppState } from '@/lib/calculations';
 import { calcDLHours, calcILHours, calcEquipUtilization, getTaktBreakInfo, totalAnnualUnits } from '@/lib/calculations';
 import { fmtH, fmtP, fmtN, fmtS } from '@/lib/format';
@@ -9,34 +11,33 @@ interface Props {
   onUpdate: (s: AppState) => void;
 }
 
+const SECT = { background: 'var(--accent-tint)' } as const;
+const SECT_TD = { padding: '7px 9px 4px', fontWeight: 700, fontSize: 13, color: 'var(--ink)' } as const;
+
 export default function MfgSummaryTab({ state }: Props) {
   const fgs  = state.finishedGoods;
   const brks = state.breaks;
 
   if (!fgs.length || !brks.length) {
     return (
-      <div className="card">
-        <div className="card-body">
-          <p className="empty-msg">Add finished goods and volume breaks first.</p>
-        </div>
-      </div>
+      <SectionCard icon="doc" title="Manufacturing Summary">
+        <Note kind="accent">Add finished goods and volume breaks first.</Note>
+      </SectionCard>
     );
   }
 
   const brkHdr = brks.map(b => (
-    <th key={b.id} style={{ textAlign: 'right', minWidth: 115 }}>
+    <th key={b.id} className="ta-r" style={{ minWidth: 115 }}>
       {b.label}<br />
-      <span style={{ fontWeight: 400, fontSize: 11 }}>{b.buildsPerYear}×/yr</span>
+      <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--ink-4)' }}>{b.buildsPerYear}×/yr</span>
     </th>
   ));
 
   // ── Takt & Slowest Cycle ──────────────────────────────────────
   const taktRows: React.ReactNode[] = [];
   taktRows.push(
-    <tr key="takt-hdr" style={{ background: '#e8f0fe' }}>
-      <td colSpan={brks.length + 1} style={{ padding: '7px 9px 4px', fontWeight: 700, fontSize: 13, color: '#1a2940' }}>
-        Takt &amp; Cycle Time
-      </td>
+    <tr key="takt-hdr" style={SECT}>
+      <td colSpan={brks.length + 1} style={SECT_TD}>Takt &amp; Cycle Time</td>
     </tr>
   );
   taktRows.push(
@@ -44,24 +45,18 @@ export default function MfgSummaryTab({ state }: Props) {
       <td style={{ paddingLeft: 9 }}>Takt Time (sec/unit)</td>
       {brks.map((_, bki) => {
         const info = getTaktBreakInfo(state, bki);
-        return (
-          <td key={bki} style={{ textAlign: 'right', fontFamily: 'monospace' }}>
-            {info ? fmtS(info.taktSec) : '—'}
-          </td>
-        );
+        return <td key={bki} className="ta-r mono">{info ? fmtS(info.taktSec) : '—'}</td>;
       })}
     </tr>
   );
   taktRows.push(
     <tr key="slowest">
-      <td style={{ paddingLeft: 9, color: '#555', fontSize: 11.5 }}>
-        Slowest Op Cycle (sec)
-      </td>
+      <td style={{ paddingLeft: 9, color: 'var(--ink-3)', fontSize: 11.5 }}>Slowest Op Cycle (sec)</td>
       {brks.map((_, bki) => {
         const info = getTaktBreakInfo(state, bki);
-        if (!info || !info.slowestOp) return <td key={bki} style={{ textAlign: 'right', color: '#aaa' }}>—</td>;
+        if (!info || !info.slowestOp) return <td key={bki} className="ta-r" style={{ color: 'var(--ink-4)' }}>—</td>;
         return (
-          <td key={bki} style={{ textAlign: 'right', fontFamily: 'monospace', color: info.taktExceeded ? '#dc2626' : '#166534' }}>
+          <td key={bki} className="ta-r mono" style={{ color: info.taktExceeded ? 'var(--err)' : 'var(--ok-2)' }}>
             {fmtS(info.slowestCycleSec)}
             <span style={{ fontSize: 10, marginLeft: 4 }}>{info.taktExceeded ? '⚠' : '✓'}</span>
           </td>
@@ -72,7 +67,7 @@ export default function MfgSummaryTab({ state }: Props) {
   if (state.directOps.length === 0) {
     taktRows.push(
       <tr key="takt-none">
-        <td colSpan={brks.length + 1} style={{ paddingLeft: 9, color: '#aaa', fontSize: 12 }}>No direct operations defined.</td>
+        <td colSpan={brks.length + 1} style={{ paddingLeft: 9, color: 'var(--ink-4)', fontSize: 12 }}>No direct operations defined.</td>
       </tr>
     );
   }
@@ -81,16 +76,14 @@ export default function MfgSummaryTab({ state }: Props) {
   const equip = state.equipment.filter(e => e.name.trim());
   const equipRows: React.ReactNode[] = [];
   equipRows.push(
-    <tr key="eq-hdr" style={{ background: '#e8f0fe' }}>
-      <td colSpan={brks.length + 1} style={{ padding: '7px 9px 4px', fontWeight: 700, fontSize: 13, color: '#1a2940' }}>
-        Equipment Utilization
-      </td>
+    <tr key="eq-hdr" style={SECT}>
+      <td colSpan={brks.length + 1} style={SECT_TD}>Equipment Utilization</td>
     </tr>
   );
   if (equip.length === 0) {
     equipRows.push(
       <tr key="eq-none">
-        <td colSpan={brks.length + 1} style={{ paddingLeft: 9, color: '#aaa', fontSize: 12 }}>No equipment defined.</td>
+        <td colSpan={brks.length + 1} style={{ paddingLeft: 9, color: 'var(--ink-4)', fontSize: 12 }}>No equipment defined.</td>
       </tr>
     );
   } else {
@@ -101,10 +94,10 @@ export default function MfgSummaryTab({ state }: Props) {
           {brks.map((_, bki) => {
             const utils = calcEquipUtilization(state, bki);
             const u = utils.find(u => u.equipment.id === eq.id);
-            if (!u) return <td key={bki} style={{ textAlign: 'right', color: '#aaa' }}>—</td>;
+            if (!u) return <td key={bki} className="ta-r" style={{ color: 'var(--ink-4)' }}>—</td>;
             const warn = u.utilPct > 100;
             return (
-              <td key={bki} style={{ textAlign: 'right', fontFamily: 'monospace', color: warn ? '#dc2626' : undefined }}>
+              <td key={bki} className="ta-r mono" style={{ color: warn ? 'var(--err)' : undefined }}>
                 {fmtP(u.utilPct)} / {fmtH(u.occupiedHrs)}h
                 {warn && <span style={{ fontSize: 10, marginLeft: 3 }}>⚠</span>}
               </td>
@@ -118,17 +111,15 @@ export default function MfgSummaryTab({ state }: Props) {
   // ── Direct Labor per FG ───────────────────────────────────────
   const dlRows: React.ReactNode[] = [];
   dlRows.push(
-    <tr key="dl-hdr" style={{ background: '#e8f0fe' }}>
-      <td colSpan={brks.length + 1} style={{ padding: '7px 9px 4px', fontWeight: 700, fontSize: 13, color: '#1a2940' }}>
-        Direct Labor Hours
-      </td>
+    <tr key="dl-hdr" style={SECT}>
+      <td colSpan={brks.length + 1} style={SECT_TD}>Direct Labor Hours</td>
     </tr>
   );
 
   fgs.forEach((fg, fgi) => {
     dlRows.push(
-      <tr key={`dl-fghdr-${fg.id}`} style={{ background: '#f0f4ff' }}>
-        <td colSpan={brks.length + 1} style={{ paddingLeft: 14, fontWeight: 600, fontSize: 12, color: '#1a2940' }}>
+      <tr key={`dl-fghdr-${fg.id}`} style={{ background: 'var(--surface-3)' }}>
+        <td colSpan={brks.length + 1} style={{ paddingLeft: 14, fontWeight: 600, fontSize: 12, color: 'var(--ink-2)' }}>
           {fg.name}
         </td>
       </tr>
@@ -142,13 +133,13 @@ export default function MfgSummaryTab({ state }: Props) {
     ];
     dlMetrics.forEach(([lbl, fmt]) => {
       dlRows.push(
-        <tr key={`dl-${fg.id}-${lbl}`} className="sub">
-          <td style={{ paddingLeft: 22, color: '#555', fontSize: 11.5 }}>{lbl}</td>
+        <tr key={`dl-${fg.id}-${lbl}`}>
+          <td style={{ paddingLeft: 22, color: 'var(--ink-3)', fontSize: 11.5 }}>{lbl}</td>
           {brks.map((_, bki) => {
             const r = calcDLHours(state, fgi, bki);
             const tau = totalAnnualUnits(state, bki);
-            if (!r || !tau) return <td key={bki} style={{ textAlign: 'right', color: '#aaa' }}>—</td>;
-            return <td key={bki} style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(r)}</td>;
+            if (!r || !tau) return <td key={bki} className="ta-r" style={{ color: 'var(--ink-4)' }}>—</td>;
+            return <td key={bki} className="ta-r mono">{fmt(r)}</td>;
           })}
         </tr>
       );
@@ -158,10 +149,8 @@ export default function MfgSummaryTab({ state }: Props) {
   // ── Indirect Labor (factory-wide) ─────────────────────────────
   const ilRows: React.ReactNode[] = [];
   ilRows.push(
-    <tr key="il-hdr" style={{ background: '#e8f0fe' }}>
-      <td colSpan={brks.length + 1} style={{ padding: '7px 9px 4px', fontWeight: 700, fontSize: 13, color: '#1a2940' }}>
-        Indirect Labor Hours (factory-wide)
-      </td>
+    <tr key="il-hdr" style={SECT}>
+      <td colSpan={brks.length + 1} style={SECT_TD}>Indirect Labor Hours (factory-wide)</td>
     </tr>
   );
   const ilMetrics: [string, (r: ReturnType<typeof calcILHours>) => string][] = [
@@ -173,17 +162,17 @@ export default function MfgSummaryTab({ state }: Props) {
   if (state.indirectOps.length === 0) {
     ilRows.push(
       <tr key="il-none">
-        <td colSpan={brks.length + 1} style={{ paddingLeft: 9, color: '#aaa', fontSize: 12 }}>No indirect operations defined.</td>
+        <td colSpan={brks.length + 1} style={{ paddingLeft: 9, color: 'var(--ink-4)', fontSize: 12 }}>No indirect operations defined.</td>
       </tr>
     );
   } else {
     ilMetrics.forEach(([lbl, fmt]) => {
       ilRows.push(
-        <tr key={`il-${lbl}`} className="sub">
-          <td style={{ paddingLeft: 9, color: '#555', fontSize: 11.5 }}>{lbl}</td>
+        <tr key={`il-${lbl}`}>
+          <td style={{ paddingLeft: 9, color: 'var(--ink-3)', fontSize: 11.5 }}>{lbl}</td>
           {brks.map((_, bki) => {
             const r = calcILHours(state, bki);
-            return <td key={bki} style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(r)}</td>;
+            return <td key={bki} className="ta-r mono">{fmt(r)}</td>;
           })}
         </tr>
       );
@@ -191,32 +180,29 @@ export default function MfgSummaryTab({ state }: Props) {
   }
 
   return (
-    <div className="card">
-      <div className="card-hdr">Manufacturing Summary</div>
-      <div className="card-body">
-        <div className="sw">
-          <table className="stbl">
-            <thead>
-              <tr><th>Metric</th>{brkHdr}</tr>
-            </thead>
-            <tbody>
-              {taktRows}
-              <tr><td colSpan={brks.length + 1} style={{ padding: 3 }} /></tr>
-              {equipRows}
-              <tr><td colSpan={brks.length + 1} style={{ padding: 3 }} /></tr>
-              {dlRows}
-              <tr><td colSpan={brks.length + 1} style={{ padding: 3 }} /></tr>
-              {ilRows}
-              <tr style={{ borderTop: '2px solid #dde', color: '#555', fontSize: 11.5 }}>
-                <td style={{ paddingLeft: 9 }}>Total annual units</td>
-                {brks.map((_, bki) => (
-                  <td key={bki} style={{ textAlign: 'right' }}>{fmtN(totalAnnualUnits(state, bki))}</td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    <SectionCard icon="doc" title="Manufacturing Summary" bodyPad={false}>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="mcx-table">
+          <thead>
+            <tr><th>Metric</th>{brkHdr}</tr>
+          </thead>
+          <tbody>
+            {taktRows}
+            <tr><td colSpan={brks.length + 1} style={{ padding: 3, background: 'transparent' }} /></tr>
+            {equipRows}
+            <tr><td colSpan={brks.length + 1} style={{ padding: 3, background: 'transparent' }} /></tr>
+            {dlRows}
+            <tr><td colSpan={brks.length + 1} style={{ padding: 3, background: 'transparent' }} /></tr>
+            {ilRows}
+            <tr style={{ borderTop: '2px solid var(--border-strong)', color: 'var(--ink-3)', fontSize: 11.5 }}>
+              <td style={{ paddingLeft: 9 }}>Total annual units</td>
+              {brks.map((_, bki) => (
+                <td key={bki} className="ta-r mono">{fmtN(totalAnnualUnits(state, bki))}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
+    </SectionCard>
   );
 }

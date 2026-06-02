@@ -2,7 +2,10 @@
 
 import { useState, useRef } from 'react';
 import { useDragSort } from '@/hooks/useDragSort';
-import InfoIcon from '@/components/InfoIcon';
+import { TIPS } from '@/components/InfoIcon';
+import SectionCard from '@/components/mcx/SectionCard';
+import Icon from '@/components/mcx/Icon';
+import { Grip, Chk, Note, HelpI } from '@/components/mcx/primitives';
 import type { AppState, BOMItem, LibraryPart } from '@/lib/calculations';
 import { annualPurchQty, applicablePrice, setCost } from '@/lib/calculations';
 import { uid, parseFraction } from '@/lib/state';
@@ -15,7 +18,6 @@ interface Props {
 }
 
 // ── Part number autocomplete ──────────────────────────────────
-
 function PartNumberInput({ value, libraryParts, onCommit }: {
   value: string;
   libraryParts: LibraryPart[];
@@ -41,15 +43,17 @@ function PartNumberInput({ value, libraryParts, onCommit }: {
     <div style={{ position: 'relative' }}>
       <input
         ref={inputRef}
+        className="mcx-input is-mono"
+        style={{ width: 130 }}
         type="text"
         value={query}
-        onChange={e => { setQuery(e.target.value); if (e.target.value.length > 0) setOpen(true); else setOpen(false); }}
+        onChange={e => { setQuery(e.target.value); if (e.target.value.length > 0) openMenu(); else setOpen(false); }}
         onFocus={() => { if (query.length > 0) openMenu(); }}
         onBlur={() => { setTimeout(() => { setOpen(false); onCommit(query); }, 150); }}
         autoComplete="off"
       />
       {open && libMatches.length > 0 && (
-        <div className="eq-menu" style={menuStyle}>
+        <div className="eq-menu mcx-menu" style={menuStyle}>
           {libMatches.map(lp => (
             <div key={lp.id} className="eq-item">
               <label onMouseDown={e => e.preventDefault()} onClick={() => {
@@ -57,10 +61,10 @@ function PartNumberInput({ value, libraryParts, onCommit }: {
                 setOpen(false);
                 onCommit(lp.partNumber, { description: lp.description, uom: lp.uom }, lp);
               }}>
-                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{lp.partNumber}</span>
-                {lp.description && <span style={{ color: '#888', marginLeft: 6, fontSize: 11 }}>{lp.description}</span>}
-                <span style={{ marginLeft: 6, fontSize: 10, color: '#166534' }}>← copy</span>
-                {lp.locked && <span style={{ marginLeft: 4, fontSize: 10, color: '#c2410c' }}>locked</span>}
+                <span className="mono" style={{ fontSize: 12 }}>{lp.partNumber}</span>
+                {lp.description && <span style={{ color: 'var(--ink-4)', fontSize: 11 }}>{lp.description}</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--ok-2)' }}>← copy</span>
+                {lp.locked && <span style={{ fontSize: 10, color: 'var(--warn)' }}>locked</span>}
               </label>
             </div>
           ))}
@@ -75,7 +79,6 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
   const common = state.bom.filter(item => !item.fgSpecific);
   const fgspec = state.bom.filter(item => item.fgSpecific);
 
-  // Drag operates on the full bom array using global indices
   const bomSort = useDragSort(state.bom, bom => onUpdate({ ...state, bom }));
 
   function updateItem(globalIdx: number, patch: Partial<BOMItem>) {
@@ -98,190 +101,121 @@ export default function BOMTab({ state, onUpdate, resetKey = 0, libraryParts = [
     onUpdate({ ...state, bom: [...state.bom, { id: uid(), partNumber: '', description: '', uom: 'EA', fgSpecific: true, customerSupplied: false, qty: 0, fgQtys: {} }] });
   }
 
-  const sharedColHdrs = (
+  function partCommit(gi: number, item: BOMItem) {
+    return (pn: string, extra?: { description: string; uom: string }, libPart?: LibraryPart) => {
+      const patch: Partial<BOMItem> = { partNumber: pn };
+      if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
+      let newState = { ...state, bom: state.bom.map((b, i2) => i2 === gi ? { ...b, ...patch } : b) };
+      if (libPart && libPart.prices.length > 0) {
+        const updatedItem = { ...item, ...patch };
+        newState = { ...newState, materialCosts: { ...newState.materialCosts } };
+        state.breaks.forEach((_, bki) => {
+          const aq = annualPurchQty(newState, updatedItem, bki);
+          if (aq > 0) { const price = applicablePrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price.unitCost); }
+        });
+      }
+      onUpdate(newState);
+    };
+  }
+
+  const sharedHdr = (
     <>
-      <th></th>
-      <th>Part Number <InfoIcon k="bomPn" /></th>
-      <th>Description <InfoIcon k="bomDesc" /></th>
-      <th>UOM <InfoIcon k="bomUom" /></th>
+      <th style={{ width: 26 }} />
+      <th>Part Number <HelpI tip={TIPS.bomPn} /></th>
+      <th>Description <HelpI tip={TIPS.bomDesc} /></th>
+      <th style={{ width: 64 }}>UOM <HelpI tip={TIPS.bomUom} /></th>
     </>
   );
 
-  const fgHdr = fgs.map(fg => (
-    <th key={fg.id} style={{ textAlign: 'center', minWidth: 72 }}>
-      {fg.name.slice(0, 9)}
-    </th>
-  ));
+  const trailingHdr = (
+    <>
+      <th className="ta-c" style={{ width: 78 }}>FG-Spec <HelpI tip={TIPS.bomFgSpec} /></th>
+      <th className="ta-c" style={{ width: 84 }}>Cust.Sup <HelpI tip={TIPS.bomCustSup} /></th>
+      <th className="ta-c" style={{ width: 56 }} title="Standard material — one flat price applies at any volume">Std</th>
+      <th style={{ width: 40 }} />
+    </>
+  );
 
   return (
     <>
       {/* ── Common Materials ── */}
-      <div className="card">
-        <div className="card-hdr">
-          Common Materials
-          <span style={{ fontSize: 11, color: '#888', fontWeight: 400, marginLeft: 8 }}>
-            Cust.Sup = customer-supplied, zero cost
-          </span>
-          <button className="btn btn-add btn-sm" onClick={addCommon}>+ Add Common</button>
-        </div>
-        <div className="card-body">
-          {common.length === 0 && <p className="empty-msg">No common materials.</p>}
-          {common.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
-              <table>
-                <thead><tr>
-                  {sharedColHdrs}
-                  <th>Qty/Unit <InfoIcon k="bomQty" /></th>
-                  <th style={{ textAlign: 'center' }}>FG-Spec <InfoIcon k="bomFgSpec" /></th>
-                  <th style={{ textAlign: 'center' }}>Cust.Sup <InfoIcon k="bomCustSup" /></th>
-                  <th style={{ textAlign: 'center' }} title="Standard material — one flat price applies at any volume">Std</th>
-                  <th></th>
-                </tr></thead>
-                <tbody>
-                  {common.map(item => {
-                    const gi = state.bom.indexOf(item);
-                    return (
-                      <tr key={item.id}
-                        {...bomSort.dragProps(gi)}
-                        className={bomSort.rowClass(gi, item.customerSupplied ? 'cs-row' : '')}>
-                        <td className="drag-h">&#9776;</td>
-                        <td>
-                          <PartNumberInput
-                            value={item.partNumber ?? ''}
-                            libraryParts={libraryParts}
-                            onCommit={(pn, extra, libPart) => {
-                              const patch: Partial<BOMItem> = { partNumber: pn };
-                              if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
-                              let newState = { ...state, bom: state.bom.map((b, i2) => i2 === gi ? { ...b, ...patch } : b) };
-                              if (libPart && libPart.prices.length > 0) {
-                                const updatedItem = { ...item, ...patch };
-                                newState = { ...newState, materialCosts: { ...newState.materialCosts } };
-                                state.breaks.forEach((_, bki) => {
-                                  const aq = annualPurchQty(newState, updatedItem, bki);
-                                  if (aq > 0) { const price = applicablePrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price.unitCost); }
-                                });
-                              }
-                              onUpdate(newState);
-                            }}
-                          />
-                        </td>
-                        <td><input type="text" key={item.id + '-desc-' + resetKey} defaultValue={item.description ?? ''} onBlur={e => updateItem(gi, { description: e.target.value })} /></td>
-                        <td style={{ width: 52 }}><input type="text" key={item.id + '-uom-' + resetKey} defaultValue={item.uom ?? ''} onBlur={e => updateItem(gi, { uom: e.target.value })} /></td>
-                        {/* Qty uses defaultValue+onBlur so fractions can be typed without interruption */}
-                        <td style={{ width: 80 }}>
-                          <input type="text"
-                            key={`${item.id}-qty-${resetKey}`}
-                            defaultValue={item.qty ?? ''}
-                            onBlur={e => setQtyBlur(gi, e.target.value)} />
-                        </td>
-                        <td style={{ textAlign: 'center', width: 52 }}>
-                          <input type="checkbox" checked={false} title="Check to make FG-Specific"
-                            onChange={e => updateItem(gi, { fgSpecific: e.target.checked })} />
-                        </td>
-                        <td style={{ textAlign: 'center', width: 52 }}>
-                          <input type="checkbox" checked={item.customerSupplied ?? false} title="Customer Supplied — no cost"
-                            onChange={e => updateItem(gi, { customerSupplied: e.target.checked })} />
-                        </td>
-                        <td style={{ textAlign: 'center', width: 44 }}>
-                          <input type="checkbox" checked={item.standard ?? false} title="Standard material — one flat price applies at any volume"
-                            onChange={e => updateItem(gi, { standard: e.target.checked })} />
-                        </td>
-                        <td><button className="btn btn-del btn-sm" onClick={() => deleteItem(gi)}>✕</button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+      <SectionCard icon="doc" title="Common Materials" sub="— Cust.Sup = customer-supplied, zero cost" action="Add Common" onAction={addCommon} bodyPad={false}>
+        {common.length === 0 && <div style={{ padding: 16 }}><Note kind="accent">No common materials yet.</Note></div>}
+        {common.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="mcx-table">
+              <thead><tr>
+                {sharedHdr}
+                <th style={{ width: 110 }}>Qty / Unit <HelpI tip={TIPS.bomQty} /></th>
+                {trailingHdr}
+              </tr></thead>
+              <tbody>
+                {common.map(item => {
+                  const gi = state.bom.indexOf(item);
+                  return (
+                    <tr key={item.id} {...bomSort.dragProps(gi)} className={bomSort.rowClass(gi, item.customerSupplied ? 'cs-row' : '')}>
+                      <td className="drag-h"><Grip /></td>
+                      <td><PartNumberInput value={item.partNumber ?? ''} libraryParts={libraryParts} onCommit={partCommit(gi, item)} /></td>
+                      <td><input className="mcx-input" style={{ minWidth: 240 }} key={item.id + '-desc-' + resetKey} defaultValue={item.description ?? ''} onBlur={e => updateItem(gi, { description: e.target.value })} /></td>
+                      <td><input className="mcx-input" style={{ width: 56, textAlign: 'center' }} key={item.id + '-uom-' + resetKey} defaultValue={item.uom ?? ''} onBlur={e => updateItem(gi, { uom: e.target.value })} /></td>
+                      <td><input className="mcx-input is-num" style={{ width: 96 }} key={`${item.id}-qty-${resetKey}`} defaultValue={item.qty ?? ''} onBlur={e => setQtyBlur(gi, e.target.value)} /></td>
+                      <td className="ta-c"><Chk on={false} title="Check to make FG-Specific" onChange={v => updateItem(gi, { fgSpecific: v })} /></td>
+                      <td className="ta-c"><Chk on={item.customerSupplied ?? false} title="Customer Supplied — no cost" onChange={v => updateItem(gi, { customerSupplied: v })} /></td>
+                      <td className="ta-c"><Chk on={item.standard ?? false} title="Standard material — one flat price applies at any volume" onChange={v => updateItem(gi, { standard: v })} /></td>
+                      <td className="ta-c"><button className="mcx-btn is-sm is-quiet is-icon" style={{ color: 'var(--err)' }} onClick={() => deleteItem(gi)}><Icon name="x" size={13} /></button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
 
       {/* ── FG-Specific Materials ── */}
-      <div className="card">
-        <div className="card-hdr">
-          FG-Specific Materials
-          <button className="btn btn-add btn-sm" onClick={addFGSpec}>+ Add FG-Specific</button>
+      <SectionCard icon="layers" title="FG-Specific Materials" action="Add FG-Specific" onAction={addFGSpec} bodyPad={false}>
+        <div style={{ padding: '12px 16px 4px' }}>
+          <Note kind="accent">Each FG may use a different quantity. Uncheck <b>FG-Spec</b> to move a part to Common.</Note>
         </div>
-        <div className="card-body">
-          <div className="inline-info" style={{ marginBottom: 8 }}>
-            Each FG may use a different quantity. Uncheck FG-Spec to move to Common.
+        {fgspec.length === 0 && <div style={{ padding: 16 }}><Note kind="accent">No FG-specific materials yet.</Note></div>}
+        {fgspec.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="mcx-table">
+              <thead><tr>
+                {sharedHdr}
+                {fgs.length > 0
+                  ? fgs.map(fg => <th key={fg.id} className="ta-c" style={{ minWidth: 76 }}>{fg.name.slice(0, 10)}</th>)
+                  : <th style={{ width: 120 }}>Qty / Unit</th>}
+                {trailingHdr}
+              </tr></thead>
+              <tbody>
+                {fgspec.map(item => {
+                  const gi = state.bom.indexOf(item);
+                  return (
+                    <tr key={item.id} {...bomSort.dragProps(gi)} className={bomSort.rowClass(gi, item.customerSupplied ? 'cs-row' : '')}>
+                      <td className="drag-h"><Grip /></td>
+                      <td><PartNumberInput value={item.partNumber ?? ''} libraryParts={libraryParts} onCommit={partCommit(gi, item)} /></td>
+                      <td><input className="mcx-input" style={{ minWidth: 240 }} key={item.id + '-desc-' + resetKey} defaultValue={item.description ?? ''} onBlur={e => updateItem(gi, { description: e.target.value })} /></td>
+                      <td><input className="mcx-input" style={{ width: 56, textAlign: 'center' }} key={item.id + '-uom-' + resetKey} defaultValue={item.uom ?? ''} onBlur={e => updateItem(gi, { uom: e.target.value })} /></td>
+                      {fgs.length > 0
+                        ? fgs.map(fg => (
+                          <td key={fg.id} className="ta-c">
+                            <input className="mcx-input is-num" style={{ width: 72 }} key={`${item.id}-${fg.id}-qty-${resetKey}`} defaultValue={(item.fgQtys || {})[fg.id] ?? ''} onBlur={e => setFGQtyBlur(gi, fg.id, e.target.value)} />
+                          </td>
+                        ))
+                        : <td><span style={{ color: 'var(--ink-4)', fontSize: 12, fontStyle: 'italic' }}>Add FGs first</span></td>}
+                      <td className="ta-c"><Chk on title="Uncheck to make Common" onChange={v => updateItem(gi, { fgSpecific: v })} /></td>
+                      <td className="ta-c"><Chk on={item.customerSupplied ?? false} title="Customer Supplied — no cost" onChange={v => updateItem(gi, { customerSupplied: v })} /></td>
+                      <td className="ta-c"><Chk on={item.standard ?? false} title="Standard material — one flat price applies at any volume" onChange={v => updateItem(gi, { standard: v })} /></td>
+                      <td className="ta-c"><button className="mcx-btn is-sm is-quiet is-icon" style={{ color: 'var(--err)' }} onClick={() => deleteItem(gi)}><Icon name="x" size={13} /></button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          {fgspec.length === 0 && <p className="empty-msg">No FG-specific materials.</p>}
-          {fgspec.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
-              <table>
-                <thead><tr>
-                  {sharedColHdrs}
-                  {fgs.length > 0 ? fgHdr : <th>Qty/Unit</th>}
-                  <th style={{ textAlign: 'center' }}>FG-Spec</th>
-                  <th style={{ textAlign: 'center' }}>Cust.Sup</th>
-                  <th style={{ textAlign: 'center' }} title="Standard material — one flat price applies at any volume">Std</th>
-                  <th></th>
-                </tr></thead>
-                <tbody>
-                  {fgspec.map(item => {
-                    const gi = state.bom.indexOf(item);
-                    return (
-                      <tr key={item.id}
-                        {...bomSort.dragProps(gi)}
-                        className={bomSort.rowClass(gi, item.customerSupplied ? 'cs-row' : '')}>
-                        <td className="drag-h">&#9776;</td>
-                        <td>
-                          <PartNumberInput
-                            value={item.partNumber ?? ''}
-                            libraryParts={libraryParts}
-                            onCommit={(pn, extra, libPart) => {
-                              const patch: Partial<BOMItem> = { partNumber: pn };
-                              if (extra) { if (!item.description) patch.description = extra.description; if (!item.uom || item.uom === 'EA') patch.uom = extra.uom; }
-                              let newState = { ...state, bom: state.bom.map((b, i2) => i2 === gi ? { ...b, ...patch } : b) };
-                              if (libPart && libPart.prices.length > 0) {
-                                const updatedItem = { ...item, ...patch };
-                                newState = { ...newState, materialCosts: { ...newState.materialCosts } };
-                                state.breaks.forEach((_, bki) => {
-                                  const aq = annualPurchQty(newState, updatedItem, bki);
-                                  if (aq > 0) { const price = applicablePrice(libPart.prices, aq); if (price !== null) setCost(newState, updatedItem.id, aq, price.unitCost); }
-                                });
-                              }
-                              onUpdate(newState);
-                            }}
-                          />
-                        </td>
-                        <td><input type="text" key={item.id + '-desc-' + resetKey} defaultValue={item.description ?? ''} onBlur={e => updateItem(gi, { description: e.target.value })} /></td>
-                        <td style={{ width: 52 }}><input type="text" key={item.id + '-uom-' + resetKey} defaultValue={item.uom ?? ''} onBlur={e => updateItem(gi, { uom: e.target.value })} /></td>
-                        {fgs.length > 0
-                          ? fgs.map(fg => (
-                            <td key={fg.id} style={{ textAlign: 'center' }}>
-                              <input type="text"
-                                key={`${item.id}-${fg.id}-qty-${resetKey}`}
-                                defaultValue={(item.fgQtys || {})[fg.id] ?? ''}
-                                onBlur={e => setFGQtyBlur(gi, fg.id, e.target.value)} />
-                            </td>
-                          ))
-                          : <td><span style={{ color: '#aaa', fontSize: 11 }}>Add FGs first</span></td>
-                        }
-                        <td style={{ textAlign: 'center', width: 52 }}>
-                          <input type="checkbox" checked={true} title="Uncheck to make Common"
-                            onChange={e => updateItem(gi, { fgSpecific: e.target.checked })} />
-                        </td>
-                        <td style={{ textAlign: 'center', width: 52 }}>
-                          <input type="checkbox" checked={item.customerSupplied ?? false} title="Customer Supplied — no cost"
-                            onChange={e => updateItem(gi, { customerSupplied: e.target.checked })} />
-                        </td>
-                        <td style={{ textAlign: 'center', width: 44 }}>
-                          <input type="checkbox" checked={item.standard ?? false} title="Standard material — one flat price applies at any volume"
-                            onChange={e => updateItem(gi, { standard: e.target.checked })} />
-                        </td>
-                        <td><button className="btn btn-del btn-sm" onClick={() => deleteItem(gi)}>✕</button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+        )}
+      </SectionCard>
     </>
   );
 }
