@@ -13,6 +13,12 @@ interface Props {
   resetKey?: number;
 }
 
+// Exact price display: keep up to 8 decimals but trim trailing zeros so a typed
+// price round-trips to the same characters (e.g. 7 → "7", not "7.0000").
+function fmtPrice(n: number): string {
+  return String(parseFloat(n.toFixed(8)));
+}
+
 const CATS: [string, string, boolean][] = [
   ['Material',       'mat',      false],
   ['Direct Labor',   'dl',       false],
@@ -45,14 +51,24 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
     );
   }
 
+  // Typed margin is a 2-decimal field, so round it on entry.
   function setMargin(fgId: string, bki: number, value: string) {
     const key = `${fgId}|${bki}`;
-    onUpdate({ ...state, margins: { ...state.margins, [key]: parseFloat(value) || 0 } });
+    const next = { ...state.margins };
+    if (value.trim() === '') {
+      delete next[key];
+    } else {
+      const m = parseFloat(value);
+      if (!isFinite(m)) return;
+      next[key] = Math.min(99.9, Math.max(-999, Math.round(m * 100) / 100));
+    }
+    onUpdate({ ...state, margins: next });
   }
 
   // Typed sell price → back-solve the gross margin (margin = 1 − cost/price).
-  // Margin stays the stored source of truth. A price below cost yields a negative
-  // (loss) margin, which is kept and shown in red; an empty price clears the cell.
+  // The margin is stored at FULL precision (not rounded) so the sell price the
+  // user typed round-trips back to exactly itself. A price below cost yields a
+  // negative (loss) margin, kept and shown in red; an empty price clears the cell.
   function setPrice(fgId: string, bki: number, total: number, value: string) {
     const key = `${fgId}|${bki}`;
     const next = { ...state.margins };
@@ -60,9 +76,8 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
     if (!isFinite(price) || price <= 0) {
       delete next[key];
     } else {
-      let margin = (1 - total / price) * 100;
-      margin = Math.min(99.9, Math.max(-999, Math.round(margin * 100) / 100));
-      next[key] = margin;
+      const margin = (1 - total / price) * 100;
+      next[key] = Math.min(99.9, Math.max(-999, margin));
     }
     onUpdate({ ...state, margins: next });
   }
@@ -135,14 +150,17 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
         <td style={{ color: 'var(--warn)', fontWeight: 600 }}>Margin %</td>
         {brks.map((_, j) => {
           const key = `${fg.id}|${j}`;
-          const val = state.margins?.[key] ?? '';
-          const neg = Number(val) < 0;
+          const raw = state.margins?.[key];
+          const hasM = raw !== undefined && raw !== null && String(raw) !== '';
+          const m = Number(raw);
+          const disp = hasM ? m.toFixed(2) : '';
           return (
             <td key={j} className="ta-r">
               <input className="mcx-input is-num" type="number" min={-999} max={99.9} step={0.01}
-                value={val}
-                onChange={e => setMargin(fg.id, j, e.target.value)}
-                style={{ width: 78, color: neg ? 'var(--err)' : undefined }}
+                key={`${fg.id}-${j}-mg-${hasM ? m : ''}-${resetKey}`}
+                defaultValue={disp}
+                onBlur={e => { if (e.target.value.trim() !== disp) setMargin(fg.id, j, e.target.value); }}
+                style={{ width: 78, color: hasM && m < 0 ? 'var(--err)' : undefined }}
               /> %
             </td>
           );
@@ -161,15 +179,16 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
           const hasM = raw !== undefined && raw !== null && String(raw) !== '' && Number(raw) < 100;
           const m = Number(raw);
           const sp = hasM ? c.total / (1 - m / 100) : null;
+          const disp = sp != null ? fmtPrice(sp) : '';
           return (
             <td key={j} className="ta-r">
               <input className="mcx-input is-num" type="number" min={0} step={0.01}
-                key={`${fg.id}-${j}-sp-${raw ?? ''}-${c.total.toFixed(4)}-${resetKey}`}
-                defaultValue={sp != null ? sp.toFixed(4) : ''}
-                onBlur={e => setPrice(fg.id, j, c.total, e.target.value)}
+                key={`${fg.id}-${j}-sp-${hasM ? m : ''}-${c.total.toFixed(6)}-${resetKey}`}
+                defaultValue={disp}
+                onBlur={e => { if (e.target.value.trim() !== disp) setPrice(fg.id, j, c.total, e.target.value); }}
                 placeholder="—"
                 title="Type a sell price to set the margin above"
-                style={{ width: 84, color: m < 0 ? 'var(--err)' : 'var(--accent-ink)', display: 'inline-block' }}
+                style={{ width: 84, color: hasM && m < 0 ? 'var(--err)' : 'var(--accent-ink)', display: 'inline-block' }}
               />
             </td>
           );
