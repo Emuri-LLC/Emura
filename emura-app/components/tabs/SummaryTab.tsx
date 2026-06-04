@@ -13,10 +13,11 @@ interface Props {
   resetKey?: number;
 }
 
-// Exact price display: keep up to 8 decimals but trim trailing zeros so a typed
-// price round-trips to the same characters (e.g. 7 → "7", not "7.0000").
+// Price display: always two decimals (it's a currency value). The back-solved
+// margin is kept at full precision, so a 2-decimal price still round-trips to
+// exactly itself on blur.
 function fmtPrice(n: number): string {
-  return String(parseFloat(n.toFixed(8)));
+  return n.toFixed(2);
 }
 
 const CATS: [string, string, boolean][] = [
@@ -156,7 +157,7 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
           const disp = hasM ? m.toFixed(2) : '';
           return (
             <td key={j} className="ta-r">
-              <input className="mcx-input is-num" type="number" min={-999} max={99.9} step={0.01}
+              <input className="mcx-input is-num" type="text" inputMode="decimal"
                 key={`${fg.id}-${j}-mg-${hasM ? m : ''}-${resetKey}`}
                 defaultValue={disp}
                 onBlur={e => { if (e.target.value.trim() !== disp) setMargin(fg.id, j, e.target.value); }}
@@ -182,7 +183,7 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
           const disp = sp != null ? fmtPrice(sp) : '';
           return (
             <td key={j} className="ta-r">
-              <input className="mcx-input is-num" type="number" min={0} step={0.01}
+              <input className="mcx-input is-num" type="text" inputMode="decimal"
                 key={`${fg.id}-${j}-sp-${hasM ? m : ''}-${c.total.toFixed(6)}-${resetKey}`}
                 defaultValue={disp}
                 onBlur={e => { if (e.target.value.trim() !== disp) setPrice(fg.id, j, c.total, e.target.value); }}
