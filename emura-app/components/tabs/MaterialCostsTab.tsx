@@ -75,7 +75,7 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
     >
       <div style={{ padding: '12px 16px' }}>
         <Note kind="warn">
-          <b style={{ color: 'var(--err)' }}>Pink</b> = missing cost (blocks finalize). <b style={{ color: 'var(--warn)' }}>Yellow</b> = archived cost at a different volume — review before finalizing.
+          <b style={{ color: 'var(--err)' }}>Pink</b> = missing cost (blocks finalize). <b style={{ color: 'var(--warn)' }}>Yellow</b> = archived break or price anomaly (higher price at higher volume) — review before finalizing.
         </Note>
       </div>
       <div style={{ overflowX: 'auto' }}>

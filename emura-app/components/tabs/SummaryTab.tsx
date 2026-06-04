@@ -51,16 +51,17 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
   }
 
   // Typed sell price → back-solve the gross margin (margin = 1 − cost/price).
-  // Margin stays the stored source of truth; an empty or sub-cost price clears it.
+  // Margin stays the stored source of truth. A price below cost yields a negative
+  // (loss) margin, which is kept and shown in red; an empty price clears the cell.
   function setPrice(fgId: string, bki: number, total: number, value: string) {
     const key = `${fgId}|${bki}`;
     const next = { ...state.margins };
     const price = parseFloat(value);
-    if (!isFinite(price) || price <= total) {
+    if (!isFinite(price) || price <= 0) {
       delete next[key];
     } else {
       let margin = (1 - total / price) * 100;
-      margin = Math.min(99.9, Math.max(0, Math.round(margin * 100) / 100));
+      margin = Math.min(99.9, Math.max(-999, Math.round(margin * 100) / 100));
       next[key] = margin;
     }
     onUpdate({ ...state, margins: next });
@@ -135,12 +136,13 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
         {brks.map((_, j) => {
           const key = `${fg.id}|${j}`;
           const val = state.margins?.[key] ?? '';
+          const neg = Number(val) < 0;
           return (
             <td key={j} className="ta-r">
-              <input className="mcx-input is-num" type="number" min={0} max={99.9} step={0.1}
+              <input className="mcx-input is-num" type="number" min={-999} max={99.9} step={0.01}
                 value={val}
                 onChange={e => setMargin(fg.id, j, e.target.value)}
-                style={{ width: 56 }}
+                style={{ width: 78, color: neg ? 'var(--err)' : undefined }}
               /> %
             </td>
           );
@@ -155,17 +157,19 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
         {brks.map((_, j) => {
           const c = costsMatrix[fi][j];
           if (!c || c.eau === 0) return <td key={j} className="ta-r">N/A</td>;
-          const m = Number(state.margins?.[`${fg.id}|${j}`]) || 0;
-          const sp = m > 0 && m < 100 ? c.total / (1 - m / 100) : null;
+          const raw = state.margins?.[`${fg.id}|${j}`];
+          const hasM = raw !== undefined && raw !== null && String(raw) !== '' && Number(raw) < 100;
+          const m = Number(raw);
+          const sp = hasM ? c.total / (1 - m / 100) : null;
           return (
             <td key={j} className="ta-r">
               <input className="mcx-input is-num" type="number" min={0} step={0.01}
-                key={`${fg.id}-${j}-sp-${m}-${c.total.toFixed(4)}-${resetKey}`}
+                key={`${fg.id}-${j}-sp-${raw ?? ''}-${c.total.toFixed(4)}-${resetKey}`}
                 defaultValue={sp != null ? sp.toFixed(4) : ''}
                 onBlur={e => setPrice(fg.id, j, c.total, e.target.value)}
                 placeholder="—"
                 title="Type a sell price to set the margin above"
-                style={{ width: 84, color: 'var(--accent-ink)', display: 'inline-block' }}
+                style={{ width: 84, color: m < 0 ? 'var(--err)' : 'var(--accent-ink)', display: 'inline-block' }}
               />
             </td>
           );
@@ -180,9 +184,11 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
         {brks.map((_, j) => {
           const c = costsMatrix[fi][j];
           if (!c || !c.eau) return <td key={j} className="ta-r" style={{ color: 'var(--ink-4)' }}>—</td>;
-          const m = Number(state.margins?.[`${fg.id}|${j}`]) || 0;
-          const as_ = m > 0 && m < 100 ? fmtC(c.total / (1 - m / 100) * c.eau, 0) : '—';
-          return <td key={j} className="ta-r mono">{as_}</td>;
+          const raw = state.margins?.[`${fg.id}|${j}`];
+          const hasM = raw !== undefined && raw !== null && String(raw) !== '' && Number(raw) < 100;
+          const m = Number(raw);
+          const as_ = hasM ? fmtC(c.total / (1 - m / 100) * c.eau, 0) : '—';
+          return <td key={j} className="ta-r mono" style={{ color: m < 0 ? 'var(--err)' : undefined }}>{as_}</td>;
         })}
       </tr>
     );

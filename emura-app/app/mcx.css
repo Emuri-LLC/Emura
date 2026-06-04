@@ -271,6 +271,10 @@ select.mcx-input { appearance: none; -webkit-appearance: none; cursor: pointer;
    below the input — keeps every input's top edge on the same line. */
 .mcx-table.is-top thead th,
 .mcx-table.is-top tbody td { vertical-align: top; }
+/* Right-align the numeric input box within a right-justified cell so it lines
+   up under the right-justified header (the .mcx-num flex box is block-level and
+   would otherwise sit at the cell's left edge). */
+.mcx-table .ta-r .mcx-num { margin-left: auto; }
 .mcx-tfoot td { padding: 11px 12px; font-weight: 700; border-top: 1px solid var(--border); }
 .mcx-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 
