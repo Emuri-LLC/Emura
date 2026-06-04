@@ -151,7 +151,7 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
         )}
         {state.finishedGoods.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
-            <table className="mcx-table">
+            <table className="mcx-table is-top">
               <thead><tr>
                 <th style={{ width: 26 }} />
                 <th>FG Name <HelpI tip={TIPS.fgName} /></th>

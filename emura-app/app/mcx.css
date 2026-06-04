@@ -210,9 +210,20 @@
 .mcx-field:last-child { margin-bottom: 0; }
 .mcx-label { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
 .mcx-help-i {
+  position: relative;
   width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--border-strong);
   color: var(--ink-4); font-size: 9px; font-weight: 700; display: inline-grid; place-items: center;
   cursor: help; flex: 0 0 auto;
+}
+.mcx-help-i:hover { color: var(--accent); border-color: var(--accent); }
+/* Styled hover tooltip (replaces the unreliable native title). Rendered
+   position:fixed by HelpI so it escapes the cards' overflow:hidden clipping. */
+.mcx-help-tip {
+  position: fixed; transform: translate(-50%, -100%); z-index: 9999; pointer-events: none;
+  width: max-content; max-width: 240px; white-space: normal; text-align: left;
+  background: var(--raised); color: var(--ink-2); border: 1px solid var(--border-strong);
+  padding: 7px 10px; border-radius: 7px; box-shadow: var(--sh-pop, 0 8px 24px rgba(0,0,0,.45));
+  font-size: 11.5px; font-weight: 400; line-height: 1.45; letter-spacing: normal; text-transform: none;
 }
 .mcx-input {
   height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px;
@@ -256,6 +267,10 @@ select.mcx-input { appearance: none; -webkit-appearance: none; cursor: pointer;
 .mcx-table tbody tr:hover { background: rgba(255,255,255,.012); }
 .mcx-table .ta-r { text-align: right; }
 .mcx-table .ta-c { text-align: center; }
+/* Top-aligned variant for dense tables where cells carry helper text / chips
+   below the input — keeps every input's top edge on the same line. */
+.mcx-table.is-top thead th,
+.mcx-table.is-top tbody td { vertical-align: top; }
 .mcx-tfoot td { padding: 11px 12px; font-weight: 700; border-top: 1px solid var(--border); }
 .mcx-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 
@@ -301,7 +316,7 @@ select.mcx-input { appearance: none; -webkit-appearance: none; cursor: pointer;
 .mcx td.drag-h, .mcx .drag-h { cursor: grab; color: var(--ink-4); width: 26px; text-align: center; }
 
 /* ============================================================ Notes (contenteditable) */
-.mcx-notes { min-height: 92px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--ink); font-size: 13px; line-height: 1.5; }
+.mcx-notes { min-height: 92px; max-height: 600px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--ink); font-size: 13px; line-height: 1.5; resize: vertical; overflow: auto; }
 .mcx-notes:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,198,228,.16); }
 .mcx-notes:empty::before { content: attr(data-placeholder); color: var(--ink-4); }
 .mcx-notes img { max-width: 100%; display: block; margin: 4px 0; border-radius: 4px; }

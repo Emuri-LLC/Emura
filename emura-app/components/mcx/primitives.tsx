@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import Icon from './Icon';
 
 /* ---- Chip: pill status tag ---- */
@@ -50,10 +50,28 @@ export function BarX({ pct, color, track }: { pct: number; color: string; track?
   );
 }
 
-/* ---- HelpI: the "i" affordance next to a label (carries a tooltip) ---- */
+/* ---- HelpI: the "i" affordance next to a label (carries a styled tooltip) ----
+   The bubble is position:fixed (anchored to the icon via getBoundingClientRect)
+   so it escapes the cards'/tables' overflow:hidden clipping. */
 export function HelpI({ tip }: { tip?: string }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   if (!tip) return null;
-  return <span className="mcx-help-i" title={tip}>i</span>;
+  const show = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    setPos({ x: r.left + r.width / 2, y: r.top - 6 });
+  };
+  return (
+    <span
+      className="mcx-help-i" aria-label={tip} tabIndex={0}
+      onMouseEnter={e => show(e.currentTarget)}
+      onMouseLeave={() => setPos(null)}
+      onFocus={e => show(e.currentTarget)}
+      onBlur={() => setPos(null)}
+    >
+      i
+      {pos && <span className="mcx-help-tip" role="tooltip" style={{ left: pos.x, top: pos.y }}>{tip}</span>}
+    </span>
+  );
 }
 
 /* category → ramp color, mirrors the design's CAT map */

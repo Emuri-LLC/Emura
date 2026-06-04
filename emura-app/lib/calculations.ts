@@ -155,6 +155,13 @@ export interface ReviewItem {
   libraryValue: number;
   direction: 'red' | 'green'; // red = library >= quote (possible underestimate); green = library < quote
   locked: boolean;             // true if library entry is locked (used in multiple quotes)
+  // Standard ⇄ tiered reconciliation. When set, this row replaces the per-break
+  // spam with a single action instead of the normal "← Use Library" button:
+  //   'to-quote'   — library is a flat (standard) price but the quote is tiered;
+  //                  convert this quote's item to standard at the library price.
+  //   'to-library' — the quote is standard but the library still has tiered prices
+  //                  it can't apply; push this flat price to the library as standard.
+  standardAction?: 'to-quote' | 'to-library';
 }
 
 // Returns the best applicable library price for a given annual qty:
@@ -180,6 +187,69 @@ export function computeQuoteReview(
     const libPart = partMap.get(bomItem.partNumber.trim().toLowerCase());
     if (!libPart || !libPart.prices.length) continue;
 
+    const libFlat  = libPart.prices.find(p => p.minQty === 0) ?? null; // standard price
+    const libTiers = libPart.prices.filter(p => p.minQty > 0);          // volume tiers
+
+    // ── Quote is standard (one flat price at any volume) ──────
+    if (bomItem.standard) {
+      const flat = findCost(state, bomItem.id, 1);
+      const quoteFlat = flat ? flat.cost : 0;
+      if (libTiers.length) {
+        // The library still has volume tiers it can't apply to a flat-priced part.
+        // Collapse the per-break spam into one row: push this flat to the library.
+        const repAq = Math.max(1, ...state.breaks.map((_, bki) => annualPurchQty(state, bomItem, bki)));
+        const repTier = applicablePrice(libTiers, repAq) ?? libTiers[0];
+        items.push({
+          kind: 'part',
+          itemName: bomItem.partNumber,
+          quoteValue: quoteFlat,
+          libraryValue: repTier.unitCost,
+          direction: repTier.unitCost >= quoteFlat ? 'red' : 'green',
+          locked: libPart.locked,
+          standardAction: 'to-library',
+        });
+      } else if (libFlat && Math.abs(libFlat.unitCost - quoteFlat) > 0.001) {
+        // Both standard, but the flat prices differ → one normal "use library" row.
+        items.push({
+          kind: 'part',
+          itemName: bomItem.partNumber,
+          breakLabel: 'standard',
+          annualQty: 0,
+          quoteValue: quoteFlat,
+          libraryValue: libFlat.unitCost,
+          direction: libFlat.unitCost >= quoteFlat ? 'red' : 'green',
+          locked: libPart.locked,
+        });
+      }
+      continue; // a standard item never compares per-break
+    }
+
+    // ── Quote is tiered but the library is standard (flat only) ──
+    if (libFlat && !libTiers.length) {
+      let differs = false;
+      for (let bki = 0; bki < state.breaks.length && !differs; bki++) {
+        const aq = annualPurchQty(state, bomItem, bki);
+        if (!aq) continue;
+        const found = findCost(state, bomItem.id, aq);
+        if (!found || Math.abs(found.cost - libFlat.unitCost) > 0.001) differs = true;
+      }
+      if (differs) {
+        const repAq = Math.max(1, ...state.breaks.map((_, bki) => annualPurchQty(state, bomItem, bki)));
+        const repFound = findCost(state, bomItem.id, repAq);
+        items.push({
+          kind: 'part',
+          itemName: bomItem.partNumber,
+          quoteValue: repFound ? repFound.cost : 0,
+          libraryValue: libFlat.unitCost,
+          direction: libFlat.unitCost >= (repFound ? repFound.cost : 0) ? 'red' : 'green',
+          locked: libPart.locked,
+          standardAction: 'to-quote',
+        });
+      }
+      continue;
+    }
+
+    // ── Normal per-break tiered comparison ────────────────────
     for (let bki = 0; bki < state.breaks.length; bki++) {
       const brk = state.breaks[bki];
       const aq = annualPurchQty(state, bomItem, bki);
@@ -243,7 +313,13 @@ export function applyLibraryToQuote(state: AppState, items: ReviewItem[]): AppSt
   let next = state;
 
   for (const item of items) {
-    if (item.kind === 'part' && item.annualQty != null) {
+    if (item.kind === 'part' && item.standardAction === 'to-quote') {
+      // Convert this quote's item to a standard (flat) price at the library value.
+      next = makeStandardInQuote(next, item.itemName, item.libraryValue);
+    } else if (item.kind === 'part' && item.standardAction === 'to-library') {
+      // Library-only action — nothing changes in the quote here.
+      continue;
+    } else if (item.kind === 'part' && item.annualQty != null) {
       const bomItem = next.bom.find(
         b => b.partNumber.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
       );
@@ -455,6 +531,50 @@ export function setCost(state: AppState, rmId: string, aq: number, cost: number)
   const i = arch.findIndex(e => Math.abs(e.annualQty - aq) < 0.01);
   if (i >= 0) arch[i] = { annualQty: aq, cost, timestamp: Date.now() };
   else arch.push({ annualQty: aq, cost, timestamp: Date.now() });
+}
+
+// Removes the cost entry at a given annual qty (used when a price field is cleared
+// — without this an emptied input silently reverts to the stored value on blur).
+export function clearCost(state: AppState, rmId: string, aq: number): void {
+  const arch = state.materialCosts[rmId];
+  if (!arch) return;
+  const next = arch.filter(e => Math.abs(e.annualQty - aq) >= 0.01);
+  if (next.length) state.materialCosts[rmId] = next;
+  else delete state.materialCosts[rmId];
+}
+
+// Converts a BOM item to a "standard" flat-price material at the given cost:
+// flags it standard, drops any tiered cost entries, and stores the single flat
+// price (annualQty=0). Pure — returns a new AppState for the undo stack.
+export function makeStandardInQuote(state: AppState, partNumber: string, cost: number): AppState {
+  const bomItem = state.bom.find(b => b.partNumber.trim().toLowerCase() === partNumber.trim().toLowerCase());
+  if (!bomItem) return state;
+  const bom = state.bom.map(b => b.id === bomItem.id ? { ...b, standard: true } : b);
+  const materialCosts = { ...state.materialCosts };
+  materialCosts[bomItem.id] = [{ annualQty: 0, cost, timestamp: Date.now() }];
+  return { ...state, bom, materialCosts };
+}
+
+// Volume-pricing anomaly: returns the set of break indices whose unit cost is
+// higher than the cost at some lower-volume (lower annual purchasing qty) break.
+// Used to flag the offending cell on the Material Costs tab.
+export function priceAnomalyBreaks(state: AppState, item: BOMItem): Set<number> {
+  const flagged = new Set<number>();
+  if (item.customerSupplied || item.standard) return flagged;
+  const pairs: { bki: number; aq: number; cost: number }[] = [];
+  for (let bki = 0; bki < state.breaks.length; bki++) {
+    const aq = annualPurchQty(state, item, bki);
+    if (!aq) continue;
+    const found = findCost(state, item.id, aq);
+    if (!found) continue;
+    pairs.push({ bki, aq, cost: found.cost });
+  }
+  for (const a of pairs) {
+    for (const b of pairs) {
+      if (b.aq < a.aq && a.cost > b.cost + 0.001) { flagged.add(a.bki); break; }
+    }
+  }
+  return flagged;
 }
 
 // ── Equipment cost ────────────────────────────────────────────

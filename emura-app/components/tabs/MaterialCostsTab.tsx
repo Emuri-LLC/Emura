@@ -1,7 +1,7 @@
 'use client';
 
 import type { AppState, BOMItem } from '@/lib/calculations';
-import { annualPurchQty, findCost, setCost } from '@/lib/calculations';
+import { annualPurchQty, findCost, setCost, clearCost, priceAnomalyBreaks } from '@/lib/calculations';
 import SectionCard from '@/components/mcx/SectionCard';
 import Icon from '@/components/mcx/Icon';
 import { Note, Chip } from '@/components/mcx/primitives';
@@ -34,16 +34,27 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
   }
 
   function setCostNum(item: BOMItem, aq: number, value: string) {
+    const updated = { ...state, materialCosts: { ...state.materialCosts } };
+    if (value.trim() === '') {
+      // Emptied field → remove the entry (don't silently revert to the old value).
+      clearCost(updated, item.id, aq);
+      onUpdate(updated);
+      return;
+    }
     const cost = parseFloat(value);
     if (isNaN(cost)) return;
-    const updated = { ...state, materialCosts: { ...state.materialCosts } };
     setCost(updated, item.id, aq, cost);
     onUpdate(updated);
   }
   function handleFlatCostChange(item: BOMItem, value: string) {
+    const updated = { ...state, materialCosts: { ...state.materialCosts } };
+    if (value.trim() === '') {
+      clearCost(updated, item.id, 0);
+      onUpdate(updated);
+      return;
+    }
     const cost = parseFloat(value);
     if (isNaN(cost)) return;
-    const updated = { ...state, materialCosts: { ...state.materialCosts } };
     setCost(updated, item.id, 0, cost);
     onUpdate(updated);
   }
@@ -82,6 +93,7 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
           <tbody>
             {costable.map(item => {
               const flat = (state.materialCosts[item.id] ?? []).find(e => e.annualQty === 0);
+              const anomalyBreaks = priceAnomalyBreaks(state, item);
               return (
                 <tr key={item.id}>
                   <td className="mono" style={{ fontWeight: 600, verticalAlign: 'top', paddingTop: 14 }}>{item.partNumber || '—'}</td>
@@ -106,8 +118,9 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
                       const found = findCost(state, item.id, aq);
                       const archived = !!(found && found.flagged);
                       const missing = !found;
-                      const bg = missing ? 'var(--err-bg)' : archived ? 'var(--warn-bg)' : 'transparent';
-                      const bd = missing ? 'var(--err-border)' : archived ? 'var(--warn-border)' : 'transparent';
+                      const anomaly = anomalyBreaks.has(j);
+                      const bg = missing ? 'var(--err-bg)' : (archived || anomaly) ? 'var(--warn-bg)' : 'transparent';
+                      const bd = missing ? 'var(--err-border)' : (archived || anomaly) ? 'var(--warn-border)' : 'transparent';
                       const srcKey = `${item.id}|${j}`;
                       const srcVal = state.materialSources?.[srcKey] ?? '';
 
@@ -119,7 +132,12 @@ export default function MaterialCostsTab({ state, onUpdate, resetKey = 0 }: Prop
                               <span className="mcx-affix" style={{ paddingRight: 0 }}>$</span>
                               <input className="num" type="text" inputMode="decimal" key={srcKey + '-cost-' + resetKey} defaultValue={found ? found.cost : ''} onBlur={e => setCostNum(item, aq, e.target.value)} />
                             </div>
-                            {archived && <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--warn)', fontSize: 11 }}><Icon name="alert" size={11} sw={2} />Archived @ {fmtN(found!.actualQty)}</span>}
+                            {/* Fixed-height indicator lane — keeps the source box aligned
+                                across cells whether or not a warning is present. */}
+                            <div style={{ height: 15, display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+                              {archived && <span title={`Archived price reused from ${fmtN(found!.actualQty)} units/yr`} style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--warn)', fontSize: 10.5 }}><Icon name="alert" size={10} sw={2} />Archived @ {fmtN(found!.actualQty)}</span>}
+                              {anomaly && <span title="This unit cost is higher than at a lower-volume break" style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--warn)', fontSize: 10.5 }}><Icon name="alert" size={10} sw={2} />Price &gt; lower vol</span>}
+                            </div>
                             <div style={{ display: 'flex', gap: 5 }}>
                               <input className="mcx-input" style={{ height: 26, fontSize: 11.5 }} placeholder="source" title="Source of this price" key={srcKey + '-src-' + resetKey} defaultValue={srcVal} onBlur={e => handleSourceChange(item, j, e.target.value)} />
                               <button className="mcx-btn is-sm is-icon" style={{ color: 'var(--ok-2)', flex: '0 0 auto' }} onClick={() => pushSource(item, j)} title="Copy source to all breaks"><Icon name="chevR" size={12} sw={2.2} /></button>

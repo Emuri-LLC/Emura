@@ -119,7 +119,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
         {state.directOps.length === 0 && <div style={{ padding: 16 }}><Note kind="accent">No direct labor operations yet.</Note></div>}
         {state.directOps.length > 0 && (
           <div style={{ overflowX: 'auto', marginTop: 12 }}>
-            <table className="mcx-table">
+            <table className="mcx-table is-top">
               <thead><tr>
                 <th style={{ width: 26 }} />
                 <th>Operation <HelpI tip={TIPS.dlName} /></th>
@@ -210,7 +210,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
         {state.subcontracts.length === 0 && <div style={{ padding: 16 }}><Note kind="accent">No subcontracts defined.</Note></div>}
         {state.subcontracts.length > 0 && (
           <div style={{ overflowX: 'auto', marginTop: 12 }}>
-            <table className="mcx-table">
+            <table className="mcx-table is-top">
               <thead><tr>
                 <th style={{ width: 26 }} />
                 <th>Name <HelpI tip={TIPS.subName} /></th>
@@ -251,7 +251,7 @@ export default function OperationsTab({ state, onUpdate, resetKey = 0, libraryLa
         {state.indirectOps.length === 0 && <div style={{ padding: 16 }}><Note kind="accent">No indirect labor categories.</Note></div>}
         {state.indirectOps.length > 0 && (
           <div style={{ overflowX: 'auto', marginTop: 12 }}>
-            <table className="mcx-table">
+            <table className="mcx-table is-top">
               <thead><tr>
                 <th style={{ width: 26 }} />
                 <th>Category <HelpI tip={TIPS.ilName} /></th>

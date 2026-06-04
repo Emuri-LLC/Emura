@@ -445,6 +445,46 @@ export async function pushPartToLibrary(
   if (priceErr) console.error('[library] pushPart prices failed:', priceErr.message);
 }
 
+// Makes a library part "standard": replaces all tiered prices with a single flat
+// price (min_qty = 0) that applies at any volume. Used to reconcile a part that is
+// standard on the quote but still carries stale volume tiers in the library.
+export async function makePartStandardInLibrary(
+  supabase: SupabaseClient,
+  orgId: string,
+  partNumber: string,
+  description: string,
+  uom: string,
+  cost: number,
+): Promise<void> {
+  const { data: partRow, error } = await supabase
+    .from('parts')
+    .upsert(
+      {
+        org_id:      orgId,
+        part_number: partNumber.trim(),
+        description: description || '',
+        uom:         uom || 'EA',
+        updated_at:  new Date().toISOString(),
+      },
+      { onConflict: 'org_id,part_number' },
+    )
+    .select('id')
+    .single();
+
+  if (error || !partRow) { console.error('[library] makeStandard failed:', error?.message); return; }
+
+  // Drop every existing tier, then write the single flat (min_qty = 0) price.
+  const { error: delErr } = await supabase.from('part_prices').delete().eq('part_id', partRow.id);
+  if (delErr) { console.error('[library] makeStandard clear failed:', delErr.message); return; }
+
+  if (cost > 0) {
+    const { error: insErr } = await supabase
+      .from('part_prices')
+      .insert({ part_id: partRow.id, min_qty: 0, unit_cost: cost, updated_at: new Date().toISOString() });
+    if (insErr) console.error('[library] makeStandard insert failed:', insErr.message);
+  }
+}
+
 // Force-pushes a single equipment entry to the library, bypassing the lock.
 export async function pushEquipmentToLibrary(
   supabase: SupabaseClient,

@@ -8,6 +8,7 @@ import CostDrivers from '@/components/CostDrivers';
 import SectionCard from '@/components/mcx/SectionCard';
 import NumX from '@/components/mcx/NumX';
 import Icon from '@/components/mcx/Icon';
+import RotatingTip from '@/components/mcx/RotatingTip';
 import { Note, HelpI } from '@/components/mcx/primitives';
 import { uid } from '@/lib/state';
 import { sanitizeNotes } from '@/lib/sanitize';
@@ -19,9 +20,10 @@ interface Props {
   libraryParts?: LibraryPart[];
   libraryEquipment?: LibraryEquipment[];
   onPushToLibrary?: (item: ReviewItem) => void;
+  onReviewMaterials?: () => void;
 }
 
-export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryParts = [], libraryEquipment = [], onPushToLibrary }: Props) {
+export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryParts = [], libraryEquipment = [], onPushToLibrary, onReviewMaterials }: Props) {
   const notesRef = useRef<HTMLDivElement>(null);
 
   // Re-runs on resetKey change (import / undo / redo / new) so the contenteditable
@@ -152,7 +154,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
           </div>
         </SectionCard>
 
-        <Note kind="accent">Every keystroke recalculates the full quote. No <b>Calculate</b> button — the figure in the ribbon is always live.</Note>
+        <RotatingTip />
       </div>
 
       {/* ── RIGHT WORKING AREA ── */}
@@ -163,6 +165,7 @@ export default function QuoteInfoTab({ state, onUpdate, resetKey = 0, libraryPar
           libraryEquipment={libraryEquipment}
           onUpdate={onUpdate}
           onPushToLibrary={onPushToLibrary ?? (() => {})}
+          onReviewMaterials={onReviewMaterials}
         />
         <CostDrivers state={state} />
       </div>

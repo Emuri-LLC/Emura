@@ -7,7 +7,7 @@ import { resolvePrimaryIndices, calcCosts, computeCostDrivers, totalAnnualUnits 
 import { computeTabStatuses } from '@/lib/tabStatus';
 import { createClient } from '@/lib/supabase';
 import type { OrgContext } from '@/lib/db';
-import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, searchQuotes, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary } from '@/lib/db';
+import { getMyOrgContext, listQuotes, loadQuote, createQuote, saveQuote, deleteQuote, saveRevision, loadQuoteRevision, searchQuotes, syncPartsToLibrary, syncEquipmentToLibrary, syncLaborRatesToLibrary, listLibraryParts, listLibraryEquipment, listLibraryLaborRates, pushPartToLibrary, pushEquipmentToLibrary, makePartStandardInLibrary } from '@/lib/db';
 import { QUOTE_STATUS_ENABLED, computeStatusEntry } from '@/lib/quoteStatus';
 import type { QuoteStatusEntry } from '@/lib/quoteStatus';
 import type { QuoteSummary } from '@/lib/db';
@@ -307,10 +307,16 @@ export default function Home() {
         b => b.partNumber.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
       );
       if (!bomItem) return;
-      const entries = (appState.materialCosts[bomItem.id] ?? []).filter(
-        e => e.annualQty >= 0 && e.cost > 0,
-      );
-      await pushPartToLibrary(supabase, ctx.orgId, bomItem.partNumber, bomItem.description, bomItem.uom, entries);
+      if (item.standardAction === 'to-library') {
+        // Reconcile a standard quote item with a still-tiered library entry:
+        // replace the library tiers with this single flat price.
+        await makePartStandardInLibrary(supabase, ctx.orgId, bomItem.partNumber, bomItem.description, bomItem.uom, item.quoteValue);
+      } else {
+        const entries = (appState.materialCosts[bomItem.id] ?? []).filter(
+          e => e.annualQty >= 0 && e.cost > 0,
+        );
+        await pushPartToLibrary(supabase, ctx.orgId, bomItem.partNumber, bomItem.description, bomItem.uom, entries);
+      }
     } else {
       const eq = appState.equipment.find(
         e => e.name.trim().toLowerCase() === item.itemName.trim().toLowerCase(),
@@ -440,7 +446,7 @@ export default function Home() {
       resetKey,
     };
     switch (currentTab) {
-      case 'info':       return <TabErrorBoundary tabName={currentTab}><QuoteInfoTab     {...tabProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={canEdit ? handlePushToLibrary : undefined} /></TabErrorBoundary>;
+      case 'info':       return <TabErrorBoundary tabName={currentTab}><QuoteInfoTab     {...tabProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onPushToLibrary={canEdit ? handlePushToLibrary : undefined} onReviewMaterials={() => setCurrentTab('matcost')} /></TabErrorBoundary>;
       case 'fgs':        return <TabErrorBoundary tabName={currentTab}><FinishedGoodsTab {...tabProps} /></TabErrorBoundary>;
       case 'bom':        return <TabErrorBoundary tabName={currentTab}><BOMTab           {...tabProps} libraryParts={libraryParts} /></TabErrorBoundary>;
       case 'matcost':    return <TabErrorBoundary tabName={currentTab}><MaterialCostsTab {...tabProps} /></TabErrorBoundary>;
@@ -448,7 +454,7 @@ export default function Home() {
       case 'ops':        return <TabErrorBoundary tabName={currentTab}><OperationsTab    {...tabProps} libraryLaborRates={libraryLaborRates} /></TabErrorBoundary>;
       case 'summary':    return <TabErrorBoundary tabName={currentTab}><SummaryTab       {...tabProps} /></TabErrorBoundary>;
       case 'mfgsummary': return <TabErrorBoundary tabName={currentTab}><MfgSummaryTab    {...tabProps} /></TabErrorBoundary>;
-      default:           return <TabErrorBoundary tabName={currentTab}><QuoteInfoTab     {...tabProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} /></TabErrorBoundary>;
+      default:           return <TabErrorBoundary tabName={currentTab}><QuoteInfoTab     {...tabProps} libraryParts={libraryParts} libraryEquipment={libraryEquipment} onReviewMaterials={() => setCurrentTab('matcost')} /></TabErrorBoundary>;
     }
   }
 

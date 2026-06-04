@@ -48,6 +48,7 @@ export default function CostDrivers({ state }: Props) {
     <SectionCard icon="sum" title="Top Cost Drivers" sub={`annual $, all FGs @ ${result.breakLabel}`} bodyPad={false}>
       <div style={{ padding: '12px 16px' }}>
         {/* Category-level */}
+        <div className="mcx-eyebrow" style={{ margin: '0 0 8px' }}>Cost drivers by category</div>
         <table className="mcx-table" style={{ marginBottom: 18 }}>
           <thead><tr>
             <th>Category</th><th className="ta-r">Annual $</th><th className="ta-r" style={{ width: 56 }}>Share</th><th style={{ width: '42%' }} />

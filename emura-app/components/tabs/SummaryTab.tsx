@@ -10,6 +10,7 @@ import { fmt4, fmtC, fmtN } from '@/lib/format';
 interface Props {
   state: AppState;
   onUpdate: (s: AppState) => void;
+  resetKey?: number;
 }
 
 const CATS: [string, string, boolean][] = [
@@ -26,7 +27,7 @@ const CATS: [string, string, boolean][] = [
   ['Subcontract',    'sub',      false],
 ];
 
-export default function SummaryTab({ state, onUpdate }: Props) {
+export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
   const fgs  = state.finishedGoods;
   const brks = state.breaks;
 
@@ -47,6 +48,22 @@ export default function SummaryTab({ state, onUpdate }: Props) {
   function setMargin(fgId: string, bki: number, value: string) {
     const key = `${fgId}|${bki}`;
     onUpdate({ ...state, margins: { ...state.margins, [key]: parseFloat(value) || 0 } });
+  }
+
+  // Typed sell price → back-solve the gross margin (margin = 1 − cost/price).
+  // Margin stays the stored source of truth; an empty or sub-cost price clears it.
+  function setPrice(fgId: string, bki: number, total: number, value: string) {
+    const key = `${fgId}|${bki}`;
+    const next = { ...state.margins };
+    const price = parseFloat(value);
+    if (!isFinite(price) || price <= total) {
+      delete next[key];
+    } else {
+      let margin = (1 - total / price) * 100;
+      margin = Math.min(99.9, Math.max(0, Math.round(margin * 100) / 100));
+      next[key] = margin;
+    }
+    onUpdate({ ...state, margins: next });
   }
 
   const brkHdr = brks.map(b => (
@@ -131,7 +148,7 @@ export default function SummaryTab({ state, onUpdate }: Props) {
       </tr>
     );
 
-    // Sell price
+    // Sell price (editable — typing here back-solves the margin above)
     rows.push(
       <tr key={`${fg.id}-sp`} style={{ background: 'var(--accent-tint)', fontWeight: 600 }}>
         <td>Sell Price / Unit</td>
@@ -139,8 +156,19 @@ export default function SummaryTab({ state, onUpdate }: Props) {
           const c = costsMatrix[fi][j];
           if (!c || c.eau === 0) return <td key={j} className="ta-r">N/A</td>;
           const m = Number(state.margins?.[`${fg.id}|${j}`]) || 0;
-          const sp = m > 0 && m < 100 ? fmtC(c.total / (1 - m / 100), 4) : '—';
-          return <td key={j} className="ta-r mono" style={{ color: 'var(--accent-ink)' }}>{sp}</td>;
+          const sp = m > 0 && m < 100 ? c.total / (1 - m / 100) : null;
+          return (
+            <td key={j} className="ta-r">
+              <input className="mcx-input is-num" type="number" min={0} step={0.01}
+                key={`${fg.id}-${j}-sp-${m}-${c.total.toFixed(4)}-${resetKey}`}
+                defaultValue={sp != null ? sp.toFixed(4) : ''}
+                onBlur={e => setPrice(fg.id, j, c.total, e.target.value)}
+                placeholder="—"
+                title="Type a sell price to set the margin above"
+                style={{ width: 84, color: 'var(--accent-ink)', display: 'inline-block' }}
+              />
+            </td>
+          );
         })}
       </tr>
     );
