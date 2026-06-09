@@ -14,11 +14,12 @@ export const TIPS: Record<string, string> = {
   capexYrs: 'Years over which capital equipment is depreciated for time-based CapEx allocation.',
   // Finished Goods
   brkLabel: 'Descriptive name for this volume scenario (e.g. "High Vol", "1000/yr").',
-  brkBpy:   'Shared customer/production orders per year. Order-setup cost is pooled across these orders and shared to each FG by its runs. Each FG sets its own runs/yr (line setups); leave blank to inherit this.',
+  brkBpy:   'Shared customer/production orders per year. Order-setup cost is pooled across these orders and shared to each FG by its share of lots. Each FG sets its own Lots/yr (line setups); leave blank to inherit this.',
   brkEau:   'Optional target: total EAU across all FGs at this break. Enables mix validation and auto-fill.',
   fgName:   'Name or part number for this finished good.',
   fgDesc:   'Description or other identifier for this finished good.',
   fgEau:    'Estimated Annual Usage (units/year) for this FG at this volume break.',
+  fgLots:   'Enter the total number of lots per year for this FG / FG family. A "lot" is a batch of parts that requires a line setup. Blank inherits the break\'s Orders/Year. Drives line-setup cost (lots × line setup ÷ EAU) and the FG\'s share of the order-setup pool.',
   // BOM
   bomPn:      'Supplier or internal part number.',
   bomDesc:    'Material or component description.',

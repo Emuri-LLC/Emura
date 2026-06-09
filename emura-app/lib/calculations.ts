@@ -9,7 +9,7 @@ export interface Break {
 
 export interface FGBreak {
   eau?: number;
-  runsPerYear?: number; // per-FG line runs (lots) per year; falls back to Break.buildsPerYear (orders/yr)
+  lotsPerYear?: number; // per-FG lots (batches needing a line setup) per year; falls back to Break.buildsPerYear (orders/yr)
 }
 
 export interface FinishedGood {
@@ -374,7 +374,8 @@ export type QuoteWarningKind =
   | 'missing-cost'        // BOM item has no cost entry at a break where it has qty
   | 'price-monotonicity'  // material cost increases at a higher-volume break
   | 'takt-exceeded'       // a direct op's cycle time exceeds takt
-  | 'util-over-100';      // equipment utilization exceeds 100%
+  | 'util-over-100'       // equipment utilization exceeds 100%
+  | 'lots-under-orders';  // Σ lots/yr across FGs is fewer than the break's orders/yr
 
 export interface QuoteWarning {
   kind: QuoteWarningKind;
@@ -459,6 +460,23 @@ export function computeQuoteWarnings(state: AppState): QuoteWarning[] {
     }
   }
 
+  // ── Total lots/yr below orders/yr ───────────────────────────
+  // Every order must contain at least one lot, so Σ lots/yr across produced FGs
+  // must be ≥ the break's orders/yr (buildsPerYear). Lots > orders is allowed
+  // (an FG may run multiple lots per order, or represent a family of parts).
+  for (let bki = 0; bki < state.breaks.length; bki++) {
+    const O = n(state.breaks[bki].buildsPerYear);
+    if (O <= 0 || totalAnnualUnits(state, bki) <= 0) continue; // break not in use
+    const lots = totalLotsPerYear(state, bki);
+    if (lots < O) {
+      warnings.push({
+        kind: 'lots-under-orders',
+        message: `${state.breaks[bki].label} — total lots/yr (${lots.toLocaleString()}) is below orders/yr (${O.toLocaleString()})`,
+        detail: 'Every order needs at least one lot. Raise an FG’s Lots/yr or lower the break’s Orders/Year.',
+      });
+    }
+  }
+
   return warnings;
 }
 
@@ -471,25 +489,28 @@ function n(v: unknown): number {
 
 // ── Volume calculations ───────────────────────────────────────
 
-// Per-FG line runs (lots) per year at a break. Falls back to the break's global
-// orders/year (buildsPerYear) when no per-FG override is set — i.e. "run every order".
-export function fgRunsPerYear(state: AppState, fgi: number, bki: number): number {
+// Per-FG lots (batches needing a line setup) per year at a break. Falls back to the
+// break's global orders/year (buildsPerYear) when no per-FG override is set — i.e.
+// "one lot per order". Returns 0 when the FG isn't produced at this break (no EAU),
+// so non-produced FGs contribute no lots to Σ-lots or equipment setup occupancy.
+export function fgLotsPerYear(state: AppState, fgi: number, bki: number): number {
   const fg = state.finishedGoods[fgi];
-  return n((fg?.breaks[bki] || {}).runsPerYear) || n((state.breaks[bki] || {}).buildsPerYear) || 1;
+  if (!fg || !n((fg.breaks[bki] || {}).eau)) return 0;
+  return n((fg.breaks[bki] || {}).lotsPerYear) || n((state.breaks[bki] || {}).buildsPerYear) || 1;
 }
 
-// Σr — total line runs/year across all FGs at a break. Denominator for allocating
-// the shared order-setup pool by each FG's share of runs.
-export function totalRunsPerYear(state: AppState, bki: number): number {
-  return state.finishedGoods.reduce((s, _, i) => s + fgRunsPerYear(state, i, bki), 0);
+// Σlots — total lots/year across all produced FGs at a break. Denominator for
+// allocating the shared order-setup pool by each FG's share of lots.
+export function totalLotsPerYear(state: AppState, bki: number): number {
+  return state.finishedGoods.reduce((s, _, i) => s + fgLotsPerYear(state, i, bki), 0);
 }
 
-// Qty per lot (run): this FG's annual units divided by its own runs/year. Line
-// setup amortizes over this — mix-independent (depends only on the FG's own runs).
+// Qty per lot: this FG's annual units divided by its own lots/year. Line setup
+// amortizes over this — mix-independent (depends only on the FG's own lots).
 export function qtyPerBuild(state: AppState, fgi: number, bki: number): number {
   const fg = state.finishedGoods[fgi];
   if (!fg) return 0;
-  const r = fgRunsPerYear(state, fgi, bki);
+  const r = fgLotsPerYear(state, fgi, bki);
   if (!r) return 0;
   return n((fg.breaks[bki] || {}).eau) / r;
 }
@@ -603,7 +624,7 @@ function buildEquipUtilMap(state: AppState, bki: number): Map<string, number> {
   const wkHrs = n(state.settings.workingHoursPerYear) || 1;
   const tau   = totalAnnualUnits(state, bki);
   const O     = n((state.breaks[bki] || {}).buildsPerYear); // orders/year (order setups happen O×/yr)
-  const totRuns = totalRunsPerYear(state, bki);             // Σr (line setups happen Σr×/yr)
+  const totRuns = totalLotsPerYear(state, bki);             // Σr (line setups happen Σr×/yr)
   const utilMap = new Map<string, number>();
   for (const op of state.directOps) {
     const ct = n(op.cycleTimeSec) / 3600;
@@ -684,8 +705,8 @@ export function calcCosts(
   const qpb = qtyPerBuild(state, fgi, bki); // qty per lot (run) for this FG
   const tau = totalAnnualUnits(state, bki);
   const O   = n((state.breaks[bki] || {}).buildsPerYear); // orders/year
-  const totRuns = totalRunsPerYear(state, bki);            // Σr
-  const r   = fgRunsPerYear(state, fgi, bki);
+  const totRuns = totalLotsPerYear(state, bki);            // Σr
+  const r   = fgLotsPerYear(state, fgi, bki);
   // Per-unit allocation of one order-setup event's cost to this FG: the shared
   // pool fires O×/yr; this FG absorbs its share of runs (r/Σr), spread over its
   // own annual units. perUnit = (r/Σr)·O·orderSetupCost / eau.
@@ -783,12 +804,12 @@ export function calcDLHours(state: AppState, fgi: number, bki: number): DLHoursR
   const brk = state.breaks[bki];
   if (!brk) return null;
 
-  const r   = fgRunsPerYear(state, fgi, bki); // this FG's runs (lots) per year
+  const r   = fgLotsPerYear(state, fgi, bki); // this FG's runs (lots) per year
   const eau = n((fg.breaks[bki] || {}).eau);
   if (!r) return null;
   const qpb = eau / r; // qty per lot
   const O   = n(brk.buildsPerYear);           // orders/year
-  const totRuns = totalRunsPerYear(state, bki); // Σr
+  const totRuns = totalLotsPerYear(state, bki); // Σr
   const orderPerRun = totRuns > 0 ? O / totRuns : 0; // this FG's order-setup events per run
 
   let runHrs = 0, lineHrs = 0, orderHrs = 0;
@@ -829,7 +850,7 @@ export interface ILHoursResult {
 export function calcILHours(state: AppState, bki: number): ILHoursResult {
   const brk = state.breaks[bki];
   const O   = brk ? n(brk.buildsPerYear) : 0;   // orders/year
-  const totRuns = totalRunsPerYear(state, bki); // Σr — total line runs/year
+  const totRuns = totalLotsPerYear(state, bki); // Σr — total line runs/year
 
   let runHrs = 0, lineHrs = 0, orderHrs = 0;
   for (const op of state.indirectOps) {
@@ -966,11 +987,11 @@ export function computeCostDrivers(state: AppState, bki: number): CostDriverResu
   const drivers: CostDriver[] = [];
   const tau  = totalAnnualUnits(state, bki);
   const O    = n(brk.buildsPerYear);            // orders/year
-  const totRuns = totalRunsPerYear(state, bki); // Σr
+  const totRuns = totalLotsPerYear(state, bki); // Σr
   const cyrs = n(state.settings.capexYears) || 1;
   // Per-unit order-setup allocation for an FG (shared pool by run-share / own units).
   const orderAllocFor = (fgi: number, eau: number) =>
-    (totRuns > 0 && eau > 0) ? (fgRunsPerYear(state, fgi, bki) / totRuns) * O / eau : 0;
+    (totRuns > 0 && eau > 0) ? (fgLotsPerYear(state, fgi, bki) / totRuns) * O / eau : 0;
 
   // Material — per BOM line
   for (const item of state.bom) {
@@ -1156,7 +1177,7 @@ export function computeRevisionDiff(a: AppState, b: AppState): RevisionDiff {
       const o: Record<string, string> = { Name: fg.name, Description: fg.description };
       fg.breaks.forEach((br, i) => {
         if (br && br.eau != null) o[`EAU ${breakLabel(b, i)}`] = num(br.eau);
-        if (br && br.runsPerYear != null) o[`Runs/yr ${breakLabel(b, i)}`] = num(br.runsPerYear);
+        if (br && br.lotsPerYear != null) o[`Lots/yr ${breakLabel(b, i)}`] = num(br.lotsPerYear);
       });
       return o;
     }));

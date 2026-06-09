@@ -24,6 +24,7 @@ export function computeTabStatuses(state: AppState): TabStatusEntry[] {
   const warnings = computeQuoteWarnings(state);
   const missing  = warnings.filter(w => w.kind === 'missing-cost').length;
   const review   = warnings.filter(w => w.kind === 'price-monotonicity' || w.kind === 'takt-exceeded' || w.kind === 'util-over-100').length;
+  const lotsErr  = warnings.filter(w => w.kind === 'lots-under-orders').length;
 
   const num = (v: unknown) => Number(v) || 0;
 
@@ -39,7 +40,9 @@ export function computeTabStatuses(state: AppState): TabStatusEntry[] {
 
   const fgs: TabStatusEntry = !hasFGs
     ? { status: 'idle' }
-    : anyEAU ? { status: 'ok' } : { status: 'err', count: state.finishedGoods.length };
+    : !anyEAU ? { status: 'err', count: state.finishedGoods.length }
+    : lotsErr > 0 ? { status: 'err', count: lotsErr }
+    : { status: 'ok' };
 
   const bom: TabStatusEntry = !hasBom ? { status: 'idle' } : { status: 'ok' };
 

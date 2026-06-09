@@ -58,27 +58,33 @@ Navigation between tabs does NOT affect undo/redo — same behavior as undo.
 
 ## Cost formulas (implement exactly)
 
-### Setup amortization — orders (shared pool) vs runs (per-FG)  ⚠️ read this
+### Setup amortization — orders (shared pool) vs lots (per-FG)  ⚠️ read this
 Two distinct inputs per break, intentionally decoupled:
 - **`O` = orders/year** — `Break.buildsPerYear` (UI label "Orders / Year"). Shared across all FGs.
-- **`r` = runs (lots)/year per FG** — `FGBreak.runsPerYear` (UI "runs/yr"). Falls back to `O` when unset
-  (resolved by `fgRunsPerYear()`; never read the raw field — it's optional). `Σr = totalRunsPerYear`.
-- `qpl` = qty per lot = `eau / r` (this is what `qtyPerBuild()` now returns — qty per **run**, not `eau/bpy`).
+- **`r` = lots/year per FG** — `FGBreak.lotsPerYear` (UI "Lots/yr"; a "lot" = a batch needing a line
+  setup). Falls back to `O` when unset, and is **0 when the FG has no EAU at that break** (resolved by
+  `fgLotsPerYear()`; never read the raw field — it's optional). `Σlots = totalLotsPerYear`.
+- `qpl` = qty per lot = `eau / r` (this is what `qtyPerBuild()` returns — qty per **lot**, not `eau/bpy`).
 
-**Line setup is private to each FG** — amortized over its own runs only, so it's mix-independent:
+**Line setup is private to each FG** — amortized over its own lots only, so it's mix-independent:
 `dlLine += lineSetupMin/60 × rate × ops / qpl`  ·  `ilLine += lineSetupHrs × rate / qpl`  ·  sub `pricePerLine / qpl`.
+(Equivalently, annual line setup = `r × lineSetupCost`, divided by the FG's EAU.)
 
-**Order setup is a shared annual pool** (`O × orderSetupCost`) **allocated to each FG by run-share**
-(`r/Σr`), spread over the FG's own annual units. Per-unit allocation factor:
-`orderAlloc = (Σr>0 && eau>0) ? (r/Σr) × O / eau : 0`, then
+**Order setup is a shared annual pool** (`O × orderSetupCost`) **allocated to each FG by lot-share**
+(`r/Σlots`), spread over the FG's own annual units. Per-unit allocation factor:
+`orderAlloc = (Σlots>0 && eau>0) ? (r/Σlots) × O / eau : 0`, then
 `dlOrder += orderSetupMin/60 × rate × ops × orderAlloc`  ·  `ilOrder += orderSetupHrs × rate × orderAlloc`  ·
-sub `pricePerOrder × orderAlloc`. (Worked check: O=12, $1,000/order pool=$12k; FG-A 10 runs eau 1,000 →
-`(10/14)×12000/1000` = $8.57/unit; FG-B 4 runs eau 160 → `(4/14)×12000/160` = $21.43/unit.)
+sub `pricePerOrder × orderAlloc`. (Worked check: O=12, $1,000/order pool=$12k; FG-A 10 lots eau 1,000 →
+`(10/14)×12000/1000` = $8.57/unit; FG-B 4 lots eau 160 → `(4/14)×12000/160` = $21.43/unit.)
 `computeCostDrivers` mirrors all of this exactly so its category totals reconcile with Summary.
 `totalOrderQty`/`toq` is no longer used by any cost formula (kept only for display).
 
+**Validation:** `Σlots` must be ≥ `O` (every order has ≥1 lot). When `Σlots < O` at an in-use break,
+`computeQuoteWarnings` emits a blocking `lots-under-orders` warning (shown red in Quote Review and on
+the Finished Goods tab/ribbon via `tabStatus`). `Σlots > O` is allowed (multi-lot orders / FG families).
+
 ### Equipment CapEx formula
-- `occupiedHrs = cycleTime×tau + orderSetup×O + lineSetup×Σr`  (order setups fire O×/yr; line setups Σr×/yr)
+- `occupiedHrs = cycleTime×tau + orderSetup×O + lineSetup×Σlots`  (order setups fire O×/yr; line setups Σlots×/yr)
 - `util = occupiedHrs / settings.workingHoursPerYear`
 - Non-project-specific: `capexPerUnit = (capex / settings.capexYears) × util / tau`
 - Non-project-specific maintenance: `maintPerUnit = annualMaintenance × util / tau`
@@ -167,8 +173,9 @@ Current fields and their guards:
 - `indirectOps[*].rateId` — same
 - `quote.revision` — `if (!state.quote.revision) state.quote.revision = ''`
 - `bom[*].standard` — `if (item.standard === undefined) item.standard = false`
-- `finishedGoods[*].breaks[*].runsPerYear` — optional; no guard needed (read via `fgRunsPerYear()`, which
-  falls back to `Break.buildsPerYear`). Never access the raw field directly.
+- `finishedGoods[*].breaks[*].lotsPerYear` — optional; read via `fgLotsPerYear()` (falls back to
+  `Break.buildsPerYear`, 0 when no EAU). Migration renames the old `runsPerYear` field → `lotsPerYear`.
+  Never access the raw field directly.
 - `primaryFgId` / `primaryBreakId` — `if (state.primaryFgId === undefined) state.primaryFgId = ''` (same for break)
 
 **If you add a new field to `AppState`, add its guard to this list.**

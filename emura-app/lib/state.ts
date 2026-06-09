@@ -120,6 +120,18 @@ export function migrateState(s: Record<string, unknown>): AppState {
     if (b.totalEAU === undefined) b.totalEAU = 0;
   });
 
+  // Finished goods: rename the per-FG-break `runsPerYear` field to `lotsPerYear`
+  // (the field is otherwise optional and resolved via fgLotsPerYear()).
+  state.finishedGoods.forEach(fg => {
+    (fg.breaks || []).forEach(br => {
+      const raw = br as unknown as Record<string, unknown>;
+      if (raw['runsPerYear'] !== undefined && br.lotsPerYear === undefined) {
+        br.lotsPerYear = parseFloat(String(raw['runsPerYear'])) || undefined;
+      }
+      delete raw['runsPerYear'];
+    });
+  });
+
   // BOM: migrate old type field to fgSpecific boolean
   state.bom.forEach(item => {
     const raw = item as unknown as Record<string, unknown>;

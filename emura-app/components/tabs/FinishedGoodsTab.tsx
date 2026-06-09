@@ -7,6 +7,7 @@ import NumX from '@/components/mcx/NumX';
 import { Grip, Chip, Note, HelpI } from '@/components/mcx/primitives';
 import Icon from '@/components/mcx/Icon';
 import type { AppState, Break, FinishedGood } from '@/lib/calculations';
+import { totalLotsPerYear } from '@/lib/calculations';
 import { uid } from '@/lib/state';
 
 interface Props {
@@ -59,7 +60,7 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
       if (i !== fgi) return fg;
       const breaks = [...(fg.breaks || [])];
       while (breaks.length <= bki) breaks.push({});
-      const cur = { ...breaks[bki] };           // merge — never wipe a per-FG runs/yr override
+      const cur = { ...breaks[bki] };           // merge — never wipe a per-FG lots/yr override
       if (value > 0) cur.eau = value; else delete cur.eau;
       breaks[bki] = cur;
       return { ...fg, breaks };
@@ -67,14 +68,14 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
     onUpdate({ ...state, finishedGoods: fgs });
   }
 
-  // Per-FG line runs (lots) per year at a break. Empty/0 → inherit the break's Orders/Year.
-  function setFGRuns(fgi: number, bki: number, value: number) {
+  // Per-FG lots per year at a break. Empty/0 → inherit the break's Orders/Year.
+  function setFGLots(fgi: number, bki: number, value: number) {
     const fgs = state.finishedGoods.map((fg, i) => {
       if (i !== fgi) return fg;
       const breaks = [...(fg.breaks || [])];
       while (breaks.length <= bki) breaks.push({});
       const cur = { ...breaks[bki] };
-      if (value > 0) cur.runsPerYear = value; else delete cur.runsPerYear;
+      if (value > 0) cur.lotsPerYear = value; else delete cur.lotsPerYear;
       breaks[bki] = cur;
       return { ...fg, breaks };
     });
@@ -175,12 +176,20 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
                 {state.breaks.map((b, j) => {
                   const hasData = state.finishedGoods.some(fg => Number((fg.breaks[j] || {}).eau) > 0);
                   const tgt = Number(b.totalEAU) || 0;
+                  const ordersN = Number(b.buildsPerYear) || 0;
+                  const lotsTotal = totalLotsPerYear(state, j);
+                  const lotsShort = hasData && ordersN > 0 && lotsTotal < ordersN;
                   return (
                     <th key={b.id} className="ta-r" style={{ minWidth: 110 }}>
                       {b.label}
                       <div style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)' }}>
-                        {b.buildsPerYear}×/yr{tgt > 0 ? ` · tgt ${tgt.toLocaleString()}` : ''}
+                        {b.buildsPerYear} orders/yr{tgt > 0 ? ` · tgt ${tgt.toLocaleString()}` : ''}
                       </div>
+                      {lotsShort && (
+                        <div style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--err)', fontSize: 11 }}>
+                          ⚠ {lotsTotal.toLocaleString()} lots/yr &lt; {ordersN.toLocaleString()} orders/yr
+                        </div>
+                      )}
                       {hasData && state.breaks.length > 1 && (
                         <button className="mcx-btn is-sm is-quiet" style={{ color: 'var(--accent-ink)', height: 20, marginTop: 2 }}
                           onClick={() => {
@@ -203,17 +212,17 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
                     <td><input className="mcx-input" style={{ minWidth: 220 }} key={fg.id + '-desc-' + resetKey} defaultValue={fg.description ?? ''} onBlur={e => setFGField(i, 'description', e.target.value)} /></td>
                     {state.breaks.map((bk, j) => {
                       const eau   = Number((fg.breaks[j] || {}).eau) || 0;
-                      const runs  = Number((fg.breaks[j] || {}).runsPerYear) || 0;
+                      const lots  = Number((fg.breaks[j] || {}).lotsPerYear) || 0;
                       const ordrs = Number(bk.buildsPerYear) || 1;
-                      const qpl   = eau > 0 ? Math.round(eau / (runs || ordrs)) : 0;
+                      const qpl   = eau > 0 ? Math.round(eau / (lots || ordrs)) : 0;
                       return (
                         <td key={j} className="ta-r">
                           <NumX value={eau} min={0} blankZero width={96}
                             key={fg.id + '-' + j + '-eau-' + resetKey} onCommit={v => setEAU(i, j, v)} />
                           <div style={{ marginTop: 4, display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>runs/yr</span>
-                            <NumX value={runs} min={0} blankZero width={56} placeholder={String(ordrs)}
-                              key={fg.id + '-' + j + '-runs-' + resetKey} onCommit={v => setFGRuns(i, j, v)} />
+                            <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>Lots/yr <HelpI tip={TIPS.fgLots} /></span>
+                            <NumX value={lots} min={0} blankZero width={84} placeholder={String(ordrs)}
+                              key={fg.id + '-' + j + '-lots-' + resetKey} onCommit={v => setFGLots(i, j, v)} />
                           </div>
                           {qpl > 0 && (
                             <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }} className="mono">

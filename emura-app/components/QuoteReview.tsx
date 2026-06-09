@@ -32,10 +32,11 @@ const WARN_LABELS: Record<QuoteWarning['kind'], string> = {
   'price-monotonicity': 'Price anomaly',
   'takt-exceeded':      'Takt exceeded',
   'util-over-100':      'Over-utilization',
+  'lots-under-orders':  'Lots below orders',
 };
 
 function WarningRow({ w, onReview }: { w: QuoteWarning; onReview?: () => void }) {
-  const blocking = w.kind === 'missing-cost';
+  const blocking = w.kind === 'missing-cost' || w.kind === 'lots-under-orders';
   const canReview = onReview && MATERIAL_WARNINGS.includes(w.kind);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--hairline)', fontSize: 12.5 }}>
@@ -111,7 +112,7 @@ export default function QuoteReview({ state, libraryParts, libraryEquipment, onU
   const normal   = items.filter(i => !i.standardAction);
   const reds     = normal.filter(i => i.direction === 'red');
   const greens   = normal.filter(i => i.direction === 'green');
-  const blocking = warnings.filter(w => w.kind === 'missing-cost').length;
+  const blocking = warnings.filter(w => w.kind === 'missing-cost' || w.kind === 'lots-under-orders').length;
 
   function applyOne(item: ReviewItem) { onUpdate(applyLibraryToQuote(state, [item])); }
   function applyAll() { onUpdate(applyLibraryToQuote(state, normal)); }

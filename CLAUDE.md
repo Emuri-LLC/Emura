@@ -45,31 +45,16 @@ The bulk of project knowledge lives in `docs/` — load the relevant file when w
 - 6 Launch prep — Stripe subscriptions, error tracking
 
 ## Current state (Phase 4 complete)
-- All 8 tabs functional in React: Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary, Mfg Summary.
-- Auth required (unauthenticated → `/login`; logout clears localStorage). Quotes in Supabase (`quotes` table, JSONB `state`) per department; localStorage is a write-through cache / offline fallback. 1-second debounced cloud save on every change.
-- Entry point is a Quotes list; open a quote to enter the tab editor (`← Quotes` returns without losing it).
-- Org hierarchy + roles (admin/estimator/viewer), admin drawer, token-based invites. Undo/redo + JSON Export/Import. All calculations run client-side, synchronously.
-- Parts & equipment library auto-synced on save; Quote Review, Cost Drivers, Primary FG+Break, Standard materials, Advanced content search, Revision Compare. (Details in [docs/architecture.md](docs/architecture.md).)
-- `index.html` is the original prototype (NOT deployed); `manufacturing-cost-estimator-spec.html` is the spec.
+- 8 React tabs (Quote Info, Finished Goods, BOM, Material Costs, Equipment, Operations, Summary, Mfg Summary). Auth required; quotes in Supabase (`quotes.state` JSONB per dept), localStorage is a write-through/offline cache, 1-s debounced cloud save.
+- Org hierarchy + roles, admin drawer, token invites, undo/redo + JSON export/import, library auto-sync, Quote Review, Cost Drivers, Primary FG+Break, Standard materials, content search, Revision Compare. All calcs client-side. (Details: [docs/architecture.md](docs/architecture.md).)
+- `index.html` = original prototype (NOT deployed); `manufacturing-cost-estimator-spec.html` = the spec (also served login-gated at `/spec`).
 
-## Core TypeScript interfaces (in `lib/calculations.ts`)
-```
-AppState     { quote, settings, laborRates, breaks, finishedGoods, bom, materialCosts,
-               materialSources, equipment, directOps, indirectOps, subcontracts, margins,
-               primaryFgId?, primaryBreakId? }   // primary* = selected "primary" FG/break ids for summary stats
-Break        { id, label, buildsPerYear, totalEAU }
-FGBreak      { eau? }
-FinishedGood { id, name, description, breaks: FGBreak[] }   // breaks index-aligned to state.breaks
-BOMItem      { id, partNumber, description, uom, fgSpecific, customerSupplied, standard?, qty, fgQtys }
-             // standard? = flat price at any volume (stored as a materialCosts entry with annualQty=0)
-Equipment    { id, name, capex, hourlyRunCost, annualMaintenance, projectSpecific }
-LaborRate    { id, name, rate }                              // named $/hr rate category
-DirectOp     { id, name, operators, cycleTimeSec, orderSetupMin, lineSetupMin, equipmentIds[], notes, rateId? }
-IndirectOp   { id, name, annualHours, orderSetupHrs, lineSetupHrs, notes, rateId? }
-Subcontract  { id, name, priceEach, pricePerLine, pricePerOrder, pricePerYear, notes }
-settings     { shopRate, indirectRate, capexYears, workingHoursPerYear }
-             // shopRate/indirectRate are internal fallbacks when op.rateId is unset
-```
+## Core types & calculations
+All `AppState` interfaces and every cost formula live in `emura-app/lib/calculations.ts` — that file is
+the single source of truth (don't restate the field lists here; they drift). Read it plus
+[docs/gotchas.md](docs/gotchas.md) before touching costs. Setup model in one line: each break has a shared
+**Orders/Year** (`Break.buildsPerYear`) and each FG a per-break **Lots/Year** (`FGBreak.lotsPerYear`); line
+setup is private per FG (over its own lots), order setup is a shared pool allocated by lot-share.
 
 ## Design principles
 - **Mission**: Fastest, easiest, most accurate cost estimating software for manufacturing — the estimator's favorite for speed, sales' favorite for clear pricing, engineering's favorite for BOMs/BOOs.

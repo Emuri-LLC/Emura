@@ -87,15 +87,15 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <h2 id="s2">2. Key Concepts</h2>
 
 <h3>2.1 Line vs. Order</h3>
-<div class="callout"><strong>Line (run)</strong>An individual production run, or lot, of a single finished good. Each FG runs on its own line at its <em>own</em> frequency — its <strong>Runs / Year</strong>. Line setup time is specific to the FG and is incurred once per run; its cost is amortized over that run's lot quantity only. It therefore depends solely on the FG's own runs and never on the product mix.</div>
-<div class="callout" style="background:#fefce8;border-color:#eab308"><strong>Order</strong>A shared production / customer order. Order setup is incurred once per order, and the year's total order-setup cost (<strong>Orders / Year</strong> × order setup) forms a single <strong>shared pool</strong>. That pool is allocated to each finished good in proportion to its share of total runs, then spread over the FG's own annual units.</div>
+<div class="callout"><strong>Line (lot)</strong>An individual production lot of a single finished good. Each FG runs as its own lots at its <em>own</em> frequency — its <strong>Lots / Year</strong>. Line setup is specific to the FG and incurred once per lot; its cost is amortized over that lot's quantity only. It therefore depends solely on the FG's own lots and never on the product mix.</div>
+<div class="callout" style="background:#fefce8;border-color:#eab308"><strong>Order</strong>A shared production / customer order. Order setup is incurred once per order, and the year's total order-setup cost (<strong>Orders / Year</strong> × order setup) forms a single <strong>shared pool</strong>. That pool is allocated to each finished good in proportion to its share of total lots, then spread over the FG's own annual units.</div>
 
-<p>This distinction matters when sizing setup costs. <strong>Line setup is private</strong> to one FG: a 30-minute line setup on an FG built in lots of 100 units costs $0.25/unit at a $50/hr rate — regardless of anything else on the floor. <strong>Order setup is shared</strong>: all of a year's order setups form one pool, divided among finished goods by how many runs each has and then spread over each FG's annual units, so an FG that runs more often (and ships more units) absorbs proportionally more of it.</p>
+<p>This distinction matters when sizing setup costs. <strong>Line setup is private</strong> to one FG: a 30-minute line setup on an FG built in lots of 100 units costs $0.25/unit at a $50/hr rate — regardless of anything else on the floor. <strong>Order setup is shared</strong>: all of a year's order setups form one pool, divided among finished goods by how many lots each has and then spread over each FG's annual units, so an FG that runs more lots (and ships more units) absorbs proportionally more of it.</p>
 
-<div class="callout" style="background:#f0fdf4;border-color:#22c55e"><strong>Why two separate inputs (Orders/Year and Runs/Year)</strong>Earlier versions used a single "Builds / Year" and assumed every FG was built on every build. That made line-setup cost swing with the mix and over-charged FGs that aren't built on every order. Splitting <em>orders</em> (shared, drive the order-setup pool) from per-FG <em>runs</em> (private, drive line setup and the order-pool allocation) makes each FG's line setup mix-independent and lets low-frequency FGs carry only the setup they actually incur — while the blended price-each output is unchanged in shape.</div>
+<div class="callout" style="background:#f0fdf4;border-color:#22c55e"><strong>Why two separate inputs (Orders/Year and Lots/Year)</strong>Earlier versions used a single "Builds / Year" and assumed every FG was built on every build. That made line-setup cost swing with the mix and over-charged FGs that aren't built on every order. Splitting <em>orders</em> (shared, drive the order-setup pool) from per-FG <em>lots</em> (private, drive line setup and the order-pool allocation) makes each FG's line setup mix-independent and lets low-frequency FGs carry only the setup they actually incur — while the blended price-each output is unchanged in shape.</div>
 
 <h3>2.2 Volume Breaks</h3>
-<p>Volume break columns represent demand scenarios. Each column has an <strong>Orders / Year</strong> (the number of shared production / customer orders placed per year) and an optional <strong>Target Total EAU</strong>. Each finished good independently has, per column, an <strong>EAU</strong> and a <strong>Runs / Year</strong> — how many times that FG is set up and run during the year. Runs / Year defaults to the column's Orders / Year ("run on every order") and can be overridden per FG; the resulting qty per lot (EAU ÷ Runs) is shown beneath each FG's EAU. The sum of FG EAUs is validated against the target and can be auto-populated from mix proportions.</p>
+<p>Volume break columns represent demand scenarios. Each column has an <strong>Orders / Year</strong> (the number of shared production / customer orders placed per year) and an optional <strong>Target Total EAU</strong>. Each finished good independently has, per column, an <strong>EAU</strong> and a <strong>Lots / Year</strong> — how many times that FG is set up and run during the year. Lots / Year defaults to the column's Orders / Year ("one lot per order") and can be overridden per FG; the resulting qty per lot (EAU ÷ Lots) is shown beneath each FG's EAU. The sum of FG EAUs is validated against the target and can be auto-populated from mix proportions. The total Lots / Year across all finished goods at a break must be at least the break's Orders / Year (every order contains at least one lot); a shortfall is flagged as an error. Lots may exceed Orders — an FG can run multiple lots per order, or represent a family of parts.</p>
 
 <h3>2.3 EAU and Mix</h3>
 <p><strong>EAU</strong> (Estimated Annual Usage) is the number of units of a given FG produced per year at a volume break. When a target total EAU is set on a break column, the system can auto-fill each FG's EAU by applying the same mix percentages from another column. A "Push mix" button copies proportions from any filled column to all other columns that have a target set.</p>
@@ -114,7 +114,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
   <li><strong>Annual Maintenance</strong>: fixed annual cost, allocated by utilization %</li>
 </ul>
 <p><strong>Project-Specific</strong> equipment (tooling, fixtures, one-time purchases) spreads CapEx and maintenance directly over annual units (EAU) rather than by utilization percentage.</p>
-<p>Equipment utilization accounts for all time the equipment is occupied: cycle time during production (over total annual units), order setups (once per order — Orders / Year times), and line setups (once per run — summed over every FG's Runs / Year).</p>
+<p>Equipment utilization accounts for all time the equipment is occupied: cycle time during production (over total annual units), order setups (once per order — Orders / Year times), and line setups (once per lot — summed over every FG's Lots / Year).</p>
 
 <h3>2.7 Primary FG + Break</h3>
 <p>Each quote may designate one finished good and one volume break as the <strong>primary</strong> combination, selected from two dropdowns on the Finished Goods tab. The primary selection is a single representative scenario used to drive summary-level statistics without picking through the full FG × break matrix. It powers three things:</p>
@@ -139,7 +139,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <tr><td>Working Hours/Year</td><td>Available production hours per year per cell; used for takt time and equipment CapEx utilization. Typical: 2,000 (1 shift) to 6,000 (3 shifts).</td></tr>
 <tr><td>CapEx Depreciation Years</td><td>Default depreciation period for non-project-specific equipment</td></tr>
 </table>
-<p><em>Note: Volume Breaks are managed on the <strong>Finished Goods</strong> tab, not Quote Info. The Volume Breaks table holds the break label, Orders / Year, and Target Total EAU fields; per-FG Runs / Year is entered in each FG's break cell below its EAU. The "+ Add Break" button and per-break delete button are also on the Finished Goods tab.</em></p>
+<p><em>Note: Volume Breaks are managed on the <strong>Finished Goods</strong> tab, not Quote Info. The Volume Breaks table holds the break label, Orders / Year, and Target Total EAU fields; per-FG Lots / Year is entered in each FG's break cell below its EAU. The "+ Add Break" button and per-break delete button are also on the Finished Goods tab.</em></p>
 
 <h4>Quote Review &amp; Warnings</h4>
 <p>A card displayed below the Quote Information and Cost Rate Settings cards on the Quote Info tab. It compares the current quote's material costs and equipment values against the org-wide library and surfaces discrepancies as actionable findings.</p>
@@ -177,8 +177,13 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 </tr>
 <tr>
   <td><strong>Over-utilization</strong></td>
-  <td>An equipment item's calculated utilization percentage exceeds 100% at a volume break. Utilization = (cycle hrs × annual units + order setup hrs × Orders/Year + line setup hrs × total Runs/Year across all FGs) ÷ working hrs/yr.</td>
+  <td>An equipment item's calculated utilization percentage exceeds 100% at a volume break. Utilization = (cycle hrs × annual units + order setup hrs × Orders/Year + line setup hrs × total Lots/Year across all FGs) ÷ working hrs/yr.</td>
   <td>Reduce cycle time assigned to this equipment, reduce demand, increase working hours per year, or plan for a second machine (add a duplicate equipment entry and split the operations between them).</td>
+</tr>
+<tr>
+  <td><strong>Lots below orders</strong></td>
+  <td>The sum of Lots / Year across produced finished goods at a volume break is less than the break's Orders / Year. Every order must contain at least one lot.</td>
+  <td>Raise an FG's Lots / Year, or lower the break's Orders / Year.</td>
 </tr>
 </table>
 <p>Warnings appear above the library comparison findings in the Quote Review card. The header shows a count badge for warnings (amber) and for library findings (red/green) independently.</p>
@@ -298,7 +303,7 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 <ul>
   <li><strong>Takt &amp; cycle</strong> — takt time vs. slowest operation cycle, with a green ✓ / red ⚠ indicator when the slowest cycle is within / exceeds takt</li>
   <li><strong>Equipment utilization</strong> — utilization % and occupied hours per equipment item; over-100% values flagged in red</li>
-  <li><strong>Direct labor hours</strong> — per finished good: run, setup, and total hours per run, hours per year, and DL setup %</li>
+  <li><strong>Direct labor hours</strong> — per finished good: run, setup, and total hours per lot, hours per year, and DL setup %</li>
   <li><strong>Indirect labor hours</strong> — factory-wide run / line-setup / order-setup / total hours per year</li>
 </ul>
 
@@ -329,8 +334,8 @@ nav a:hover{color:white;background:rgba(255,255,255,.1)}
 
   finishedGoods: [{
     id, name, description,
-    breaks: [{ eau, runsPerYear }]   // index-aligned to breaks[]
-    // runsPerYear: optional per-FG runs (lots)/year; falls back to the break's buildsPerYear
+    breaks: [{ eau, lotsPerYear }]   // index-aligned to breaks[]
+    // lotsPerYear: optional per-FG lots/year; falls back to the break's buildsPerYear
   }],
 
   bom: [{
@@ -408,16 +413,16 @@ labor_rate_library (org_id, name unique per org)
 
 <h3>5.1 Volume Fundamentals</h3>
 <div class="formula">
-RunsPerYear(FG_i, Break_j)    = finishedGoods[i].breaks[j].runsPerYear ?? BuildsPerYear[j]
-TotalRuns(Break_j)            = Σ_i  RunsPerYear(FG_i, Break_j)             [= Σr]
-QtyPerLot(FG_i, Break_j)      = EAU[i][j] ÷ RunsPerYear(FG_i, Break_j)
+LotsPerYear(FG_i, Break_j)    = finishedGoods[i].breaks[j].lotsPerYear ?? BuildsPerYear[j]
+TotalLots(Break_j)            = Σ_i  LotsPerYear(FG_i, Break_j)             [= Σr]
+QtyPerLot(FG_i, Break_j)      = EAU[i][j] ÷ LotsPerYear(FG_i, Break_j)
 TotalAnnualUnits(Break_j)     = Σ_i  EAU[i][j]
 AnnualPurchQty(BOMItem_k, j)  = Σ_i  BOMQty(BOMItem_k, FG_i) × EAU[i][j]
                                  [customer-supplied items: always 0]
 
-OrderAlloc(FG_i, Break_j)     = (RunsPerYear(FG_i, j) ÷ TotalRuns(j)) × BuildsPerYear[j] ÷ EAU[i][j]
-  // per-unit allocation of ONE order-setup event's cost to FG_i: its share of total runs (r/Σr),
-  // times Orders/Year, spread over its own annual units. Zero when TotalRuns or EAU is 0.
+OrderAlloc(FG_i, Break_j)     = (LotsPerYear(FG_i, j) ÷ TotalLots(j)) × BuildsPerYear[j] ÷ EAU[i][j]
+  // per-unit allocation of ONE order-setup event's cost to FG_i: its share of total lots (r/Σr),
+  // times Orders/Year, spread over its own annual units. Zero when TotalLots or EAU is 0.
 </div>
 
 <h3>5.2 Material Cost Per Unit</h3>
@@ -436,7 +441,7 @@ OrderAlloc(FG_i, Break_j)     = (RunsPerYear(FG_i, j) ÷ TotalRuns(j)) × Builds
 For each operation <em>Op</em> that uses equipment <em>Eq</em>:
   OpOccupiedHrs = (Op.cycleTimeSec ÷ 3600 × TotalAnnualUnits[j])
                 + (Op.orderSetupMin ÷ 60 × BuildsPerYear[j])        [orders/year — order setups]
-                + (Op.lineSetupMin ÷ 60 × TotalRuns[j])             [Σ runs across all FGs — line setups]
+                + (Op.lineSetupMin ÷ 60 × TotalLots[j])             [Σ lots across all FGs — line setups]
   OpUtil = OpOccupiedHrs ÷ WorkingHoursPerYear
 
 TotalUtil(Eq, j) = Σ_op  OpUtil   [sum over all ops that list Eq in their equipmentIds]
@@ -476,8 +481,8 @@ EquipCost(Op)      = Σ_eq  EquipCostPerUnit(eq)
 
 DirectLabor(FG_i, j) = Σ_op  [ RunCost + LineSetupCost + OrderSetupCost + EquipCost ]
 </div>
-<p>Line setup divides by the FG's own qty per lot, so it depends only on that FG's runs — it is unaffected by the product mix. Order setup is the shared pool: each op's annual order-setup cost (Orders/Year × per-order cost) is allocated to FG_i by its share of total runs, then spread over its own annual units, via <code>OrderAlloc</code>.</p>
-<div class="callout"><strong>Worked example — shared order pool</strong>One break: Orders/Year = 12, and an order setup costing $1,000 per order (pool = $12,000/yr). FG&nbsp;A runs 10×/yr (EAU 1,000); FG&nbsp;B runs 4×/yr (EAU 160); TotalRuns = 14.
+<p>Line setup divides by the FG's own qty per lot, so it depends only on that FG's lots — it is unaffected by the product mix. Order setup is the shared pool: each op's annual order-setup cost (Orders/Year × per-order cost) is allocated to FG_i by its share of total lots, then spread over its own annual units, via <code>OrderAlloc</code>.</p>
+<div class="callout"><strong>Worked example — shared order pool</strong>One break: Orders/Year = 12, and an order setup costing $1,000 per order (pool = $12,000/yr). FG&nbsp;A: 10 lots/yr (EAU 1,000); FG&nbsp;B: 4 lots/yr (EAU 160); TotalLots = 14.
 <br>Order setup &mdash; FG&nbsp;A: (10⁄14) × 12,000 ÷ 1,000 = <strong>$8.57/unit</strong>; FG&nbsp;B: (4⁄14) × 12,000 ÷ 160 = <strong>$21.43/unit</strong>.
 <br>Line setup &mdash; charged only against each FG's own lot quantity (A: 100/lot, B: 40/lot), independent of the other FG.</div>
 
@@ -489,7 +494,7 @@ OrderSetupCost(Cat) = OrderSetupHrs × IndirectRate × OrderAlloc(FG_i, j)     [
 
 IndirectLabor(FG_i, j) = Σ_cat  [ RunCost + LineSetupCost + OrderSetupCost ]
 </div>
-<p>Indirect setup follows the same split as direct labor: line setup is amortized over each category's per-run hours against the FG's own lot quantity (private), while order setup is pooled across the year's orders and allocated by run-share via <code>OrderAlloc</code>.</p>
+<p>Indirect setup follows the same split as direct labor: line setup is amortized over each category's per-lot hours against the FG's own lot quantity (private), while order setup is pooled across the year's orders and allocated by lot-share via <code>OrderAlloc</code>.</p>
 
 <h3>5.6 Subcontract Cost Per Unit</h3>
 <div class="formula">
@@ -527,7 +532,7 @@ Category totals = Σ of their individual drivers (so they reconcile exactly with
 <div class="formula">
 qty                 = QtyPerLot(primaryFG, primaryBreak)
 PersonHours(Op)     = (CycleTimeSec ÷ 3600 × qty)            [run]
-                    + ((LineSetupMin + OrderSetupMin) ÷ 60)   [setup, once per run]
+                    + ((LineSetupMin + OrderSetupMin) ÷ 60)   [setup, once per lot]
                       × Operators                              [all operators counted]
 pc/hr(Op)           = qty ÷ PersonHours(Op)
 LinePcHr            = qty ÷ Σ_op PersonHours(Op)               [each op as its own batch, no bottleneck cap]
@@ -569,11 +574,11 @@ LinePcHr            = qty ÷ Σ_op PersonHours(Op)               [each op as its
 <tr><td>Working Hours/Year</td><td>Available production hours per year per machine or cell. Used for takt time and CapEx utilization. Typical: 2,000 (1 shift) to 6,000 (3 shifts).</td></tr>
 <tr><td>CapEx Depreciation Years</td><td>Years over which capital equipment is depreciated for time-based CapEx allocation.</td></tr>
 <tr><td rowspan="3">Volume Breaks<br><em>(Finished Goods tab)</em></td><td>Label</td><td>Descriptive name for this volume scenario (e.g. "High Vol", "1000/yr").</td></tr>
-<tr><td>Orders/Year</td><td>Shared customer/production orders per year. Order-setup cost is pooled across these orders and allocated to each FG by its share of runs.</td></tr>
+<tr><td>Orders/Year</td><td>Shared customer/production orders per year. Order-setup cost is pooled across these orders and allocated to each FG by its share of lots.</td></tr>
 <tr><td>Target EAU</td><td>Optional target: total EAU across all FGs at this break. Enables mix validation and auto-fill.</td></tr>
 <tr><td rowspan="3">Finished Goods</td><td>FG Name</td><td>Name or part number for this finished good.</td></tr>
 <tr><td>FG EAU</td><td>Estimated Annual Usage (units/year) for this FG at this volume break.</td></tr>
-<tr><td>Runs/Year</td><td>Times this FG is set up and run per year (its own line setups). Blank inherits the break's Orders/Year. Qty per lot = EAU ÷ Runs is shown below.</td></tr>
+<tr><td>Lots/Year</td><td>Total lots per year for this FG / FG family. A lot is a batch of parts that requires a line setup. Blank inherits the break's Orders/Year. Drives line-setup cost (lots × line setup ÷ EAU) and the FG's share of the order-setup pool.</td></tr>
 <tr><td rowspan="6">BOM</td><td>Part Number</td><td>Supplier or internal part number.</td></tr>
 <tr><td>Description</td><td>Material or component description.</td></tr>
 <tr><td>UOM</td><td>Unit of measure (e.g. EA, LB, FT, M, KG).</td></tr>
