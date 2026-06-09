@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
               // 'unsafe-inline' here is genuinely required for JSX inline styles.
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data:",
+              // Same-origin frames only — used by the /spec page's isolated
+              // srcdoc iframe. frame-ancestors 'none' still blocks the app from
+              // being embedded elsewhere.
+              "frame-src 'self'",
               "connect-src 'self' https://*.supabase.com https://*.supabase.co",
               "font-src 'self'",
               "object-src 'none'",
