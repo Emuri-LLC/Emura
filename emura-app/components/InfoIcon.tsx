@@ -14,7 +14,7 @@ export const TIPS: Record<string, string> = {
   capexYrs: 'Years over which capital equipment is depreciated for time-based CapEx allocation.',
   // Finished Goods
   brkLabel: 'Descriptive name for this volume scenario (e.g. "High Vol", "1000/yr").',
-  brkBpy:   'Order events per year. All FGs are built simultaneously each event.',
+  brkBpy:   'Shared customer/production orders per year. Order-setup cost is pooled across these orders and shared to each FG by its runs. Each FG sets its own runs/yr (line setups); leave blank to inherit this.',
   brkEau:   'Optional target: total EAU across all FGs at this break. Enables mix validation and auto-fill.',
   fgName:   'Name or part number for this finished good.',
   fgDesc:   'Description or other identifier for this finished good.',

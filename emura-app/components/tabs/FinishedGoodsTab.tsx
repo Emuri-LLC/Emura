@@ -28,7 +28,7 @@ function applyMix(state: AppState, srcBki: number, dstBki: number): AppState {
     const pct = (Number((fg.breaks[srcBki] || {}).eau) || 0) / srcTotal;
     const breaks = [...fg.breaks];
     while (breaks.length <= dstBki) breaks.push({});
-    breaks[dstBki] = { eau: Math.round(pct * dstTotal) };
+    breaks[dstBki] = { ...(breaks[dstBki] || {}), eau: Math.round(pct * dstTotal) };
     return { ...fg, breaks };
   });
   return { ...state, finishedGoods: fgs };
@@ -59,7 +59,23 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
       if (i !== fgi) return fg;
       const breaks = [...(fg.breaks || [])];
       while (breaks.length <= bki) breaks.push({});
-      breaks[bki] = value > 0 ? { eau: value } : {};
+      const cur = { ...breaks[bki] };           // merge — never wipe a per-FG runs/yr override
+      if (value > 0) cur.eau = value; else delete cur.eau;
+      breaks[bki] = cur;
+      return { ...fg, breaks };
+    });
+    onUpdate({ ...state, finishedGoods: fgs });
+  }
+
+  // Per-FG line runs (lots) per year at a break. Empty/0 → inherit the break's Orders/Year.
+  function setFGRuns(fgi: number, bki: number, value: number) {
+    const fgs = state.finishedGoods.map((fg, i) => {
+      if (i !== fgi) return fg;
+      const breaks = [...(fg.breaks || [])];
+      while (breaks.length <= bki) breaks.push({});
+      const cur = { ...breaks[bki] };
+      if (value > 0) cur.runsPerYear = value; else delete cur.runsPerYear;
+      breaks[bki] = cur;
       return { ...fg, breaks };
     });
     onUpdate({ ...state, finishedGoods: fgs });
@@ -108,7 +124,7 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
             <thead><tr>
               <th style={{ width: 26 }} />
               <th>Label <HelpI tip={TIPS.brkLabel} /></th>
-              <th className="ta-r">Builds / Year <HelpI tip={TIPS.brkBpy} /></th>
+              <th className="ta-r">Orders / Year <HelpI tip={TIPS.brkBpy} /></th>
               <th className="ta-r">Target Total EAU <HelpI tip={TIPS.brkEau} /></th>
               <th style={{ width: 40 }} />
             </tr></thead>
@@ -185,12 +201,28 @@ export default function FinishedGoodsTab({ state, onUpdate, resetKey = 0 }: Prop
                     <td className="drag-h"><Grip /></td>
                     <td><input className="mcx-input is-mono" style={{ width: 120 }} key={fg.id + '-name-' + resetKey} defaultValue={fg.name} onBlur={e => setFGField(i, 'name', e.target.value)} /></td>
                     <td><input className="mcx-input" style={{ minWidth: 220 }} key={fg.id + '-desc-' + resetKey} defaultValue={fg.description ?? ''} onBlur={e => setFGField(i, 'description', e.target.value)} /></td>
-                    {state.breaks.map((_, j) => (
-                      <td key={j} className="ta-r">
-                        <NumX value={Number((fg.breaks[j] || {}).eau) || 0} min={0} blankZero width={96}
-                          key={fg.id + '-' + j + '-eau-' + resetKey} onCommit={v => setEAU(i, j, v)} />
-                      </td>
-                    ))}
+                    {state.breaks.map((bk, j) => {
+                      const eau   = Number((fg.breaks[j] || {}).eau) || 0;
+                      const runs  = Number((fg.breaks[j] || {}).runsPerYear) || 0;
+                      const ordrs = Number(bk.buildsPerYear) || 1;
+                      const qpl   = eau > 0 ? Math.round(eau / (runs || ordrs)) : 0;
+                      return (
+                        <td key={j} className="ta-r">
+                          <NumX value={eau} min={0} blankZero width={96}
+                            key={fg.id + '-' + j + '-eau-' + resetKey} onCommit={v => setEAU(i, j, v)} />
+                          <div style={{ marginTop: 4, display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>runs/yr</span>
+                            <NumX value={runs} min={0} blankZero width={56} placeholder={String(ordrs)}
+                              key={fg.id + '-' + j + '-runs-' + resetKey} onCommit={v => setFGRuns(i, j, v)} />
+                          </div>
+                          {qpl > 0 && (
+                            <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }} className="mono">
+                              {qpl.toLocaleString()}/lot
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
                     <td className="ta-c">
                       {state.primaryFgId === fg.id
                         ? <Chip kind="ok"><Icon name="check" size={11} sw={2.4} />Primary</Chip>

@@ -3,12 +3,13 @@
 export interface Break {
   id: string;
   label: string;
-  buildsPerYear: number;
+  buildsPerYear: number; // orders/year (O) — shared across all FGs; surfaced in the UI as "Orders / Year"
   totalEAU: number;
 }
 
 export interface FGBreak {
   eau?: number;
+  runsPerYear?: number; // per-FG line runs (lots) per year; falls back to Break.buildsPerYear (orders/yr)
 }
 
 export interface FinishedGood {
@@ -470,13 +471,31 @@ function n(v: unknown): number {
 
 // ── Volume calculations ───────────────────────────────────────
 
-export function qtyPerBuild(state: AppState, fgi: number, bki: number): number {
+// Per-FG line runs (lots) per year at a break. Falls back to the break's global
+// orders/year (buildsPerYear) when no per-FG override is set — i.e. "run every order".
+export function fgRunsPerYear(state: AppState, fgi: number, bki: number): number {
   const fg = state.finishedGoods[fgi];
-  const br = state.breaks[bki];
-  if (!fg || !br || !br.buildsPerYear) return 0;
-  return n((fg.breaks[bki] || {}).eau) / br.buildsPerYear;
+  return n((fg?.breaks[bki] || {}).runsPerYear) || n((state.breaks[bki] || {}).buildsPerYear) || 1;
 }
 
+// Σr — total line runs/year across all FGs at a break. Denominator for allocating
+// the shared order-setup pool by each FG's share of runs.
+export function totalRunsPerYear(state: AppState, bki: number): number {
+  return state.finishedGoods.reduce((s, _, i) => s + fgRunsPerYear(state, i, bki), 0);
+}
+
+// Qty per lot (run): this FG's annual units divided by its own runs/year. Line
+// setup amortizes over this — mix-independent (depends only on the FG's own runs).
+export function qtyPerBuild(state: AppState, fgi: number, bki: number): number {
+  const fg = state.finishedGoods[fgi];
+  if (!fg) return 0;
+  const r = fgRunsPerYear(state, fgi, bki);
+  if (!r) return 0;
+  return n((fg.breaks[bki] || {}).eau) / r;
+}
+
+// Σ qty/lot across FGs. Retained for display; no longer used by any cost formula
+// (shared order setup now allocates by run-share, not total order qty).
 export function totalOrderQty(state: AppState, bki: number): number {
   return state.finishedGoods.reduce((s, _, i) => s + qtyPerBuild(state, i, bki), 0);
 }
@@ -583,14 +602,14 @@ export function priceAnomalyBreaks(state: AppState, item: BOMItem): Set<number> 
 function buildEquipUtilMap(state: AppState, bki: number): Map<string, number> {
   const wkHrs = n(state.settings.workingHoursPerYear) || 1;
   const tau   = totalAnnualUnits(state, bki);
-  const bpy   = n((state.breaks[bki] || {}).buildsPerYear);
-  const nFGs  = state.finishedGoods.length;
+  const O     = n((state.breaks[bki] || {}).buildsPerYear); // orders/year (order setups happen O×/yr)
+  const totRuns = totalRunsPerYear(state, bki);             // Σr (line setups happen Σr×/yr)
   const utilMap = new Map<string, number>();
   for (const op of state.directOps) {
     const ct = n(op.cycleTimeSec) / 3600;
     const os = n(op.orderSetupMin) / 60;
     const ls = n(op.lineSetupMin) / 60;
-    const opUtil = (ct * tau + os * bpy + ls * bpy * nFGs) / wkHrs;
+    const opUtil = (ct * tau + os * O + ls * totRuns) / wkHrs;
     for (const eqId of op.equipmentIds || []) {
       utilMap.set(eqId, (utilMap.get(eqId) ?? 0) + opUtil);
     }
@@ -662,10 +681,15 @@ export function calcCosts(
   if (!fg) return null;
 
   const eau = n((fg.breaks[bki] || {}).eau);
-  const qpb = qtyPerBuild(state, fgi, bki);
-  const toq = totalOrderQty(state, bki);
+  const qpb = qtyPerBuild(state, fgi, bki); // qty per lot (run) for this FG
   const tau = totalAnnualUnits(state, bki);
-  const bpy = n((state.breaks[bki] || {}).buildsPerYear);
+  const O   = n((state.breaks[bki] || {}).buildsPerYear); // orders/year
+  const totRuns = totalRunsPerYear(state, bki);            // Σr
+  const r   = fgRunsPerYear(state, fgi, bki);
+  // Per-unit allocation of one order-setup event's cost to this FG: the shared
+  // pool fires O×/yr; this FG absorbs its share of runs (r/Σr), spread over its
+  // own annual units. perUnit = (r/Σr)·O·orderSetupCost / eau.
+  const orderAlloc = (totRuns > 0 && eau > 0) ? (r / totRuns) * O / eau : 0;
 
   // Material
   let mat = 0, matIncomplete = false;
@@ -688,8 +712,8 @@ export function calcCosts(
     const os = n(op.orderSetupMin) / 60;
     const rate = resolveDirectRate(state, op);
     dlRun += ct * rate * ops;
-    if (qpb > 0) dlLine += ls * rate * ops / qpb;
-    if (toq > 0) dlOrder += os * rate * ops / toq;
+    if (qpb > 0) dlLine += ls * rate * ops / qpb;          // line setup: own runs only
+    dlOrder += os * rate * ops * orderAlloc;               // order setup: shared pool by run-share
     dlEquip += calcEquipCost(state, op, bki);
   }
   dlEquip += calcEquipCapexCosts(state, bki);
@@ -699,17 +723,16 @@ export function calcCosts(
   for (const op of state.indirectOps) {
     const rate = resolveIndirectRate(state, op);
     if (tau > 0) ilRun += n(op.annualHours) * rate / tau;
-    if (eau > 0) ilLine += n(op.lineSetupHrs) * bpy * rate / eau;
-    // Correct: divide by toq (units/order); bpy cancels with totalAnnualUnits = toq * bpy
-    if (toq > 0) ilOrder += n(op.orderSetupHrs) * rate / toq;
+    if (qpb > 0) ilLine += n(op.lineSetupHrs) * rate / qpb;       // line setup: own runs only
+    ilOrder += n(op.orderSetupHrs) * rate * orderAlloc;           // order setup: shared pool by run-share
   }
 
   // Subcontracts
   let sub = 0;
   for (const s of state.subcontracts) {
     sub += n(s.priceEach);
-    if (qpb > 0) sub += n(s.pricePerLine) / qpb;
-    if (toq > 0) sub += n(s.pricePerOrder) / toq;
+    if (qpb > 0) sub += n(s.pricePerLine) / qpb;           // per line/run: own runs only
+    sub += n(s.pricePerOrder) * orderAlloc;                // per order: shared pool by run-share
     if (tau > 0) sub += n(s.pricePerYear) / tau;
   }
 
@@ -760,11 +783,13 @@ export function calcDLHours(state: AppState, fgi: number, bki: number): DLHoursR
   const brk = state.breaks[bki];
   if (!brk) return null;
 
-  const bpy = n(brk.buildsPerYear);
+  const r   = fgRunsPerYear(state, fgi, bki); // this FG's runs (lots) per year
   const eau = n((fg.breaks[bki] || {}).eau);
-  if (!bpy) return null;
-  const qpb = eau / bpy;
-  const toq = totalOrderQty(state, bki);
+  if (!r) return null;
+  const qpb = eau / r; // qty per lot
+  const O   = n(brk.buildsPerYear);           // orders/year
+  const totRuns = totalRunsPerYear(state, bki); // Σr
+  const orderPerRun = totRuns > 0 ? O / totRuns : 0; // this FG's order-setup events per run
 
   let runHrs = 0, lineHrs = 0, orderHrs = 0;
   for (const op of state.directOps) {
@@ -773,12 +798,12 @@ export function calcDLHours(state: AppState, fgi: number, bki: number): DLHoursR
     const ls  = n(op.lineSetupMin) / 60;
     const os  = n(op.orderSetupMin) / 60;
     runHrs   += ct * ops * qpb;
-    lineHrs  += ls * ops;
-    if (toq > 0) orderHrs += os * ops * qpb / toq;
+    lineHrs  += ls * ops;                   // one line setup per run
+    orderHrs += os * ops * orderPerRun;     // shared order pool allocated by run-share
   }
 
   const totalHrsPerBuild = runHrs + lineHrs + orderHrs;
-  const totalHrsPerYear  = totalHrsPerBuild * bpy;
+  const totalHrsPerYear  = totalHrsPerBuild * r;
   const setupHrs         = lineHrs + orderHrs;
   const setupPct         = totalHrsPerBuild > 0 ? (setupHrs / totalHrsPerBuild) * 100 : 0;
 
@@ -787,7 +812,7 @@ export function calcDLHours(state: AppState, fgi: number, bki: number): DLHoursR
     lineSetupHrsPerBuild: lineHrs,
     orderSetupHrsPerBuild: orderHrs,
     totalHrsPerBuild,
-    runHrsPerYear: runHrs * bpy,
+    runHrsPerYear: runHrs * r,
     totalHrsPerYear,
     setupPct,
   };
@@ -803,17 +828,15 @@ export interface ILHoursResult {
 
 export function calcILHours(state: AppState, bki: number): ILHoursResult {
   const brk = state.breaks[bki];
-  const bpy = brk ? n(brk.buildsPerYear) : 0;
-  const nFGs = state.finishedGoods.length || 1;
+  const O   = brk ? n(brk.buildsPerYear) : 0;   // orders/year
+  const totRuns = totalRunsPerYear(state, bki); // Σr — total line runs/year
 
   let runHrs = 0, lineHrs = 0, orderHrs = 0;
   for (const op of state.indirectOps) {
     runHrs   += n(op.annualHours);
-    lineHrs  += n(op.lineSetupHrs) * bpy;
-    orderHrs += n(op.orderSetupHrs) * bpy;
+    lineHrs  += n(op.lineSetupHrs) * totRuns;   // one line setup per run, Σr runs/yr
+    orderHrs += n(op.orderSetupHrs) * O;        // one order setup per order, O orders/yr
   }
-  // lineSetupHrs applies per FG per build — multiply by nFGs
-  lineHrs *= nFGs;
 
   const total    = runHrs + lineHrs + orderHrs;
   const setupPct = total > 0 ? ((lineHrs + orderHrs) / total) * 100 : 0;
@@ -942,9 +965,12 @@ export function computeCostDrivers(state: AppState, bki: number): CostDriverResu
 
   const drivers: CostDriver[] = [];
   const tau  = totalAnnualUnits(state, bki);
-  const toq  = totalOrderQty(state, bki);
-  const bpy  = n(brk.buildsPerYear);
+  const O    = n(brk.buildsPerYear);            // orders/year
+  const totRuns = totalRunsPerYear(state, bki); // Σr
   const cyrs = n(state.settings.capexYears) || 1;
+  // Per-unit order-setup allocation for an FG (shared pool by run-share / own units).
+  const orderAllocFor = (fgi: number, eau: number) =>
+    (totRuns > 0 && eau > 0) ? (fgRunsPerYear(state, fgi, bki) / totRuns) * O / eau : 0;
 
   // Material — per BOM line
   for (const item of state.bom) {
@@ -975,7 +1001,7 @@ export function computeCostDrivers(state: AppState, bki: number): CostDriverResu
       const qpb = qtyPerBuild(state, fgi, bki);
       let perUnit = ct * rate * operators;
       if (qpb > 0) perUnit += ls * rate * operators / qpb;
-      if (toq > 0) perUnit += os * rate * operators / toq;
+      perUnit += os * rate * operators * orderAllocFor(fgi, eau);
       annual += perUnit * eau;
     }
     if (annual > 0) drivers.push({ category: 'Direct Labor', label: op.name || '(unnamed op)', annualDollars: annual });
@@ -1005,13 +1031,14 @@ export function computeCostDrivers(state: AppState, bki: number): CostDriverResu
   for (const op of state.indirectOps) {
     const rate = resolveIndirectRate(state, op);
     let annual = 0;
-    for (const fg of state.finishedGoods) {
-      const eau = n((fg.breaks[bki] || {}).eau);
+    for (let fgi = 0; fgi < state.finishedGoods.length; fgi++) {
+      const eau = n((state.finishedGoods[fgi].breaks[bki] || {}).eau);
       if (!eau) continue;
+      const qpb = qtyPerBuild(state, fgi, bki);
       let perUnit = 0;
       if (tau > 0) perUnit += n(op.annualHours) * rate / tau;
-      perUnit += n(op.lineSetupHrs) * bpy * rate / eau;
-      if (toq > 0) perUnit += n(op.orderSetupHrs) * rate / toq;
+      if (qpb > 0) perUnit += n(op.lineSetupHrs) * rate / qpb;
+      perUnit += n(op.orderSetupHrs) * rate * orderAllocFor(fgi, eau);
       annual += perUnit * eau;
     }
     if (annual > 0) drivers.push({ category: 'Indirect Labor', label: op.name || '(unnamed)', annualDollars: annual });
@@ -1026,7 +1053,7 @@ export function computeCostDrivers(state: AppState, bki: number): CostDriverResu
       const qpb = qtyPerBuild(state, fgi, bki);
       let perUnit = n(s.priceEach);
       if (qpb > 0) perUnit += n(s.pricePerLine) / qpb;
-      if (toq > 0) perUnit += n(s.pricePerOrder) / toq;
+      perUnit += n(s.pricePerOrder) * orderAllocFor(fgi, eau);
       if (tau > 0) perUnit += n(s.pricePerYear) / tau;
       annual += perUnit * eau;
     }
@@ -1120,14 +1147,17 @@ export function computeRevisionDiff(a: AppState, b: AppState): RevisionDiff {
 
   sections.push(diffEntities('Volume Breaks', a.breaks, b.breaks,
     br => br.label || '(unnamed)',
-    br => ({ Label: br.label, 'Builds/yr': num(br.buildsPerYear), 'Target EAU': num(br.totalEAU) })));
+    br => ({ Label: br.label, 'Orders/yr': num(br.buildsPerYear), 'Target EAU': num(br.totalEAU) })));
 
   const breakLabel = (st: AppState, i: number) => st.breaks[i]?.label || `Break ${i + 1}`;
   sections.push(diffEntities('Finished Goods', a.finishedGoods, b.finishedGoods,
     fg => fg.name || '(unnamed)',
     fg => {
       const o: Record<string, string> = { Name: fg.name, Description: fg.description };
-      fg.breaks.forEach((br, i) => { if (br && br.eau != null) o[`EAU ${breakLabel(b, i)}`] = num(br.eau); });
+      fg.breaks.forEach((br, i) => {
+        if (br && br.eau != null) o[`EAU ${breakLabel(b, i)}`] = num(br.eau);
+        if (br && br.runsPerYear != null) o[`Runs/yr ${breakLabel(b, i)}`] = num(br.runsPerYear);
+      });
       return o;
     }));
 

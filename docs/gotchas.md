@@ -58,12 +58,27 @@ Navigation between tabs does NOT affect undo/redo — same behavior as undo.
 
 ## Cost formulas (implement exactly)
 
-### Indirect order setup formula
-`ilOrder += orderSetupHrs × indirectRate / toq`  (NOT multiplied by buildsPerYear)
-Reasoning: annual cost = orderSetupHrs × bpy × rate; per unit = /(toq × bpy) → bpy cancels.
+### Setup amortization — orders (shared pool) vs runs (per-FG)  ⚠️ read this
+Two distinct inputs per break, intentionally decoupled:
+- **`O` = orders/year** — `Break.buildsPerYear` (UI label "Orders / Year"). Shared across all FGs.
+- **`r` = runs (lots)/year per FG** — `FGBreak.runsPerYear` (UI "runs/yr"). Falls back to `O` when unset
+  (resolved by `fgRunsPerYear()`; never read the raw field — it's optional). `Σr = totalRunsPerYear`.
+- `qpl` = qty per lot = `eau / r` (this is what `qtyPerBuild()` now returns — qty per **run**, not `eau/bpy`).
+
+**Line setup is private to each FG** — amortized over its own runs only, so it's mix-independent:
+`dlLine += lineSetupMin/60 × rate × ops / qpl`  ·  `ilLine += lineSetupHrs × rate / qpl`  ·  sub `pricePerLine / qpl`.
+
+**Order setup is a shared annual pool** (`O × orderSetupCost`) **allocated to each FG by run-share**
+(`r/Σr`), spread over the FG's own annual units. Per-unit allocation factor:
+`orderAlloc = (Σr>0 && eau>0) ? (r/Σr) × O / eau : 0`, then
+`dlOrder += orderSetupMin/60 × rate × ops × orderAlloc`  ·  `ilOrder += orderSetupHrs × rate × orderAlloc`  ·
+sub `pricePerOrder × orderAlloc`. (Worked check: O=12, $1,000/order pool=$12k; FG-A 10 runs eau 1,000 →
+`(10/14)×12000/1000` = $8.57/unit; FG-B 4 runs eau 160 → `(4/14)×12000/160` = $21.43/unit.)
+`computeCostDrivers` mirrors all of this exactly so its category totals reconcile with Summary.
+`totalOrderQty`/`toq` is no longer used by any cost formula (kept only for display).
 
 ### Equipment CapEx formula
-- `occupiedHrs = cycleTime×tau + orderSetup×bpy + lineSetup×bpy×nFGs`
+- `occupiedHrs = cycleTime×tau + orderSetup×O + lineSetup×Σr`  (order setups fire O×/yr; line setups Σr×/yr)
 - `util = occupiedHrs / settings.workingHoursPerYear`
 - Non-project-specific: `capexPerUnit = (capex / settings.capexYears) × util / tau`
 - Non-project-specific maintenance: `maintPerUnit = annualMaintenance × util / tau`
@@ -152,6 +167,8 @@ Current fields and their guards:
 - `indirectOps[*].rateId` — same
 - `quote.revision` — `if (!state.quote.revision) state.quote.revision = ''`
 - `bom[*].standard` — `if (item.standard === undefined) item.standard = false`
+- `finishedGoods[*].breaks[*].runsPerYear` — optional; no guard needed (read via `fgRunsPerYear()`, which
+  falls back to `Break.buildsPerYear`). Never access the raw field directly.
 - `primaryFgId` / `primaryBreakId` — `if (state.primaryFgId === undefined) state.primaryFgId = ''` (same for break)
 
 **If you add a new field to `AppState`, add its guard to this list.**

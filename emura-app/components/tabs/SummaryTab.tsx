@@ -225,7 +225,7 @@ export default function SummaryTab({ state, onUpdate, resetKey = 0 }: Props) {
           <tbody>
             {rows}
             <tr style={{ borderTop: '2px solid var(--border-strong)', color: 'var(--ink-3)', fontSize: 11.5 }}>
-              <td>Units/build (total order)</td>
+              <td>Units per lot (Σ all FGs)</td>
               {brks.map((_, j) => <td key={j} className="ta-r mono">{fmtN(totalOrderQty(state, j))}</td>)}
             </tr>
             <tr style={{ color: 'var(--ink-3)', fontSize: 11.5 }}>
